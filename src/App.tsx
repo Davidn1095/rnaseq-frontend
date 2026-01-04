@@ -454,7 +454,7 @@ export default function App() {
 
     const form = new FormData();
     form.append("file", file, file.name);
-    form.append("run_id", runId);
+    if (runId) form.append("run_id", runId);
 
     log(`Calling backend: POST ${buildUrl(base, "/qc")}  file=${file.name} (${prettyBytes(file.size)})`);
 
@@ -556,7 +556,7 @@ export default function App() {
 
     const base = sanitizeApiBase(apiBase);
 
-    // Backend expects: POST /harmony with multipart/form-data and required field name 'file'.
+    // Backend expects: POST /harmony with multipart/form-data and required field name 'run_id'.
     // If no API base is set, we simulate to keep the UI usable.
     if (!base.trim()) {
       await sleep(700);
@@ -566,6 +566,7 @@ export default function App() {
     }
 
     const form = new FormData();
+    form.append("run_id", runId);
     form.append("file", file, file.name);
 
     log(`Calling backend: POST ${buildUrl(base, "/harmony")}  file=${file.name} (${prettyBytes(file.size)})`);
@@ -595,13 +596,41 @@ export default function App() {
       log("Clustering is locked. Complete batch correction first.");
       return;
     }
+    if (!runId) {
+      setClusStatus("error");
+      log("Clustering requires run_id. Run QC again.");
+      return;
+    }
 
-    // Backend has no /cluster. Simulate to keep the UI flow.
     setClusStatus("running");
     log("Clustering started…");
-    await sleep(700);
-    setClusStatus("done");
-    log("Clustering done (simulated). Backend endpoint /cluster not available.");
+
+    const base = sanitizeApiBase(apiBase);
+
+    if (!base.trim()) {
+      await sleep(700);
+      setClusStatus("done");
+      log("Clustering done (simulated). No API base URL set.");
+      return;
+    }
+
+    const form = new FormData();
+    form.append("run_id", runId);
+
+    log(`Calling backend: POST ${buildUrl(base, "/cluster")}  run_id=${runId}`);
+
+    let res = await runWithBackend({ apiBase: base, path: "/cluster", form });
+
+    if (res.ok) {
+      setClusStatus("done");
+      const payload = res.payload ?? { message: res.message };
+      const txt = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+      log("Clustering done (backend). Cluster labels received.");
+      log(`Cluster output: ${txt.length > 220 ? `${txt.slice(0, 220)}…` : txt}`);
+    } else {
+      setClusStatus("error");
+      log(`Clustering failed: ${res.message}`);
+    }
   }
 
   async function doTraining() {
@@ -609,13 +638,41 @@ export default function App() {
       log("Training is locked. Complete clustering first.");
       return;
     }
+    if (!runId) {
+      setTrainStatus("error");
+      log("Training requires run_id. Run QC again.");
+      return;
+    }
 
-    // Backend has no /train. Simulate to keep the UI flow.
     setTrainStatus("running");
     log("ML training started…");
-    await sleep(700);
-    setTrainStatus("done");
-    log("ML training done (simulated). Backend endpoint /train not available.");
+
+    const base = sanitizeApiBase(apiBase);
+
+    if (!base.trim()) {
+      await sleep(700);
+      setTrainStatus("done");
+      log("ML training done (simulated). No API base URL set.");
+      return;
+    }
+
+    const form = new FormData();
+    form.append("run_id", runId);
+
+    log(`Calling backend: POST ${buildUrl(base, "/train")}  run_id=${runId}`);
+
+    const res = await runWithBackend({ apiBase: base, path: "/train", form });
+
+    if (res.ok) {
+      setTrainStatus("done");
+      const payload = res.payload ?? { message: res.message };
+      const txt = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+      log("ML training done (backend). Metrics received.");
+      log(`Training output: ${txt.length > 220 ? `${txt.slice(0, 220)}…` : txt}`);
+    } else {
+      setTrainStatus("error");
+      log(`ML training failed: ${res.message}`);
+    }
   }
 
   async function doExport() {
@@ -623,50 +680,76 @@ export default function App() {
       log("Results are locked. Complete training first.");
       return;
     }
+    if (!runId) {
+      setExportStatus("error");
+      log("Export requires run_id. Run QC again.");
+      return;
+    }
 
     setExportStatus("running");
     log("Preparing export…");
 
-    // Backend has no /export. Export locally.
-    await sleep(300);
+    const base = sanitizeApiBase(apiBase);
 
-    if (normalizedText) {
-      const looksLikeTable = normalizedText.includes("\n") && (normalizedText.includes(",") || normalizedText.includes("\t"));
-      const mime = looksLikeTable ? "text/csv" : "application/json";
-      const ext = looksLikeTable ? "csv" : "json";
-      const blob = new Blob([normalizedText], { type: mime });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `normalized_output.${ext}`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-      log(`Downloaded normalized_output.${ext}.`);
-    } else {
-      log("No normalized output stored yet. Run Normalization first.");
+    if (!base.trim()) {
+      // Fallback: export locally as before.
+      await sleep(300);
+
+      if (normalizedText) {
+        const looksLikeTable = normalizedText.includes("
+") && (normalizedText.includes(",") || normalizedText.includes("	"));
+        const mime = looksLikeTable ? "text/csv" : "application/json";
+        const ext = looksLikeTable ? "csv" : "json";
+        const blob = new Blob([normalizedText], { type: mime });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `normalized_output.${ext}`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        log(`Downloaded normalized_output.${ext}.`);
+      } else {
+        log("No normalized output stored yet. Run Normalization first.");
+      }
+
+      setExportStatus("done");
+      log("Export downloaded.");
+      return;
     }
 
-    const summary = {
-      message: "Export generated in the browser. Backend currently exposes /normalize only.",
-      file: fileInfo?.name ?? null,
-      steps: {
-        quality_control: qcStatus,
-        normalization: normStatus,
-        harmony: harmStatus,
-        clustering: clusStatus,
-        training: trainStatus,
-      },
-      log: logLines,
-    };
+    // Backend export: download a zip bundle.
+    const url = buildUrl(base, "/export");
+    const form = new FormData();
+    form.append("run_id", runId);
 
-    const blob2 = new Blob([JSON.stringify(summary, null, 2)], { type: "application/json" });
-    const a2 = document.createElement("a");
-    a2.href = URL.createObjectURL(blob2);
-    a2.download = "rnaseq_run_summary.json";
-    a2.click();
-    URL.revokeObjectURL(a2.href);
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { Accept: "application/zip" },
+        body: form,
+        mode: "cors",
+        redirect: "follow",
+      });
 
-    setExportStatus("done");
-    log("Export downloaded.");
+      if (!res.ok) {
+        const data = await safeJson(res);
+        setExportStatus("error");
+        log(`Export failed: API error ${res.status}: ${typeof data === "string" ? data : JSON.stringify(data)}`);
+        return;
+      }
+
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "rnaseq_export.zip";
+      a.click();
+      URL.revokeObjectURL(a.href);
+
+      setExportStatus("done");
+      log("Export downloaded.");
+    } catch (e: any) {
+      setExportStatus("error");
+      log(`Export failed: ${e?.message ?? "Network error."}`);
+    }
   }
 
   async function testHealth() {
