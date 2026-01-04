@@ -549,13 +549,17 @@ export default function App() {
     log("Normalization started…");
 
     // Backend expects: POST /normalize with multipart/form-data and required field name 'file'.
+    // Include run_id if available so the backend can persist artifacts for the run.
     const form = new FormData();
     form.append("file", file, file.name);
+    if (runId) form.append("run_id", runId);
 
     const base = sanitizeApiBase(apiBase);
 
     if (base.trim()) {
-      log(`Calling backend: POST ${buildUrl(base, "/normalize")}  file=${file.name} (${prettyBytes(file.size)})${runId ? `  run_id=${runId}` : ""}`);
+      log(
+        `Calling backend: POST ${buildUrl(base, "/normalize")}  file=${file.name} (${prettyBytes(file.size)})${runId ? `  run_id=${runId}` : ""}`
+      );
     } else {
       log("No API base URL set. Running simulated normalization.");
     }
@@ -571,7 +575,6 @@ export default function App() {
     if (res.ok) {
       setNormStatus("done");
 
-      // FastAPI returns a JSON string when returning a plain str. Keep it generic.
       const payload = res.payload ?? { message: res.message };
       const textMaybe = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
       setNormalizedText(textMaybe ?? JSON.stringify({ message: res.message }, null, 2));
@@ -619,6 +622,8 @@ export default function App() {
     // Fallback for backends that implemented /harmony as multipart.
     if (!res.ok && (isMissingRunId422(res.payload) || isRunIdNotFound(res.payload))) {
       log("Backend reports missing run_id in JSON. Retrying as multipart…");
+      const form = new FormData();
+      form.append("run_id", runId);
       if (file) form.append("file", file, file.name);
       res = await runWithBackend({ apiBase: base, path: "/harmony", form });
     }
@@ -700,12 +705,24 @@ export default function App() {
       return;
     }
 
-    const form = new FormData();
-    form.append("run_id", runId);
-
     log(`Calling backend: POST ${buildUrl(base, "/train")}  run_id=${runId}`);
 
-    const res = await runWithBackend({ apiBase: base, path: "/train", json: { run_id: runId } });
+    // Prefer JSON (matches the OpenAPI schema). If the request fails (some proxies / deployments), retry using multipart.
+    let res = await runWithBackend({ apiBase: base, path: "/train", json: { run_id: runId }, timeoutMs: 180000 });
+
+    // Some deployments define /train/ with a trailing slash.
+    if (!res.ok && isMissingRunId422(res.payload)) {
+      log("Backend reports missing run_id in JSON. Retrying with /train/ …");
+      res = await runWithBackend({ apiBase: base, path: "/train/", json: { run_id: runId }, timeoutMs: 180000 });
+    }
+
+    // Multipart fallback (avoids JSON preflight in some environments).
+    if (!res.ok && (isMissingRunId422(res.payload) || isRunIdNotFound(res.payload))) {
+      log("Retrying /train as multipart…");
+      const form = new FormData();
+      form.append("run_id", runId);
+      res = await runWithBackend({ apiBase: base, path: "/train", form, timeoutMs: 180000 });
+    }
 
     if (res.ok) {
       setTrainStatus("done");
