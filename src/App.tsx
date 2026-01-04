@@ -342,6 +342,7 @@ export default function App() {
 
   // Backend currently exposes POST /normalize only. We store its returned content for export.
   const [normalizedText, setNormalizedText] = useState<string | null>(null);
+  const [runId, setRunId] = useState<string | null>(null);
 
   const [logLines, setLogLines] = useState<string[]>([]);
   const logRef = useRef<HTMLDivElement | null>(null);
@@ -404,6 +405,7 @@ export default function App() {
     setTrainStatus("idle");
     setExportStatus("idle");
     setNormalizedText(null);
+    setRunId(null);
 
     setLogLines([]);
 
@@ -452,6 +454,7 @@ export default function App() {
 
     const form = new FormData();
     form.append("file", file, file.name);
+    form.append("run_id", runId);
 
     log(`Calling backend: POST ${buildUrl(base, "/qc")}  file=${file.name} (${prettyBytes(file.size)})`);
 
@@ -466,6 +469,11 @@ export default function App() {
     if (res.ok) {
       setQcStatus("done");
       const payload = res.payload ?? { message: res.message };
+      if (payload && typeof payload === "object" && "run_id" in (payload as any)) {
+        const rid = String((payload as any).run_id);
+        setRunId(rid);
+        log(`Captured run_id: ${rid}`);
+      }
       const txt = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
       log("Quality control done (backend). QC summary received.");
       log(`QC summary: ${txt.length > 220 ? `${txt.slice(0, 220)}…` : txt}`);
@@ -539,6 +547,12 @@ export default function App() {
 
     setHarmStatus("running");
     log("Harmony batch correction started…");
+
+    if (!runId) {
+      setHarmStatus("error");
+      log("Harmony requires run_id from QC. Run QC again.");
+      return;
+    }
 
     const base = sanitizeApiBase(apiBase);
 
@@ -684,6 +698,7 @@ export default function App() {
     setTrainStatus("idle");
     setExportStatus("idle");
     setNormalizedText(null);
+    setRunId(null);
     setLogLines([]);
   }
 
