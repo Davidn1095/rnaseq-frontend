@@ -431,13 +431,48 @@ export default function App() {
       log("QC is locked. Upload data first.");
       return;
     }
+    if (!file) {
+      log("No file selected.");
+      return;
+    }
 
-    // Backend has no /qc. Simulate QC to keep the UI flow.
     setQcStatus("running");
     log("Quality control started…");
-    await sleep(500);
-    setQcStatus("done");
-    log("Quality control done (simulated). Backend endpoint /qc not available.");
+
+    const base = sanitizeApiBase(apiBase);
+
+    // Backend expects: POST /qc with multipart/form-data and required field name 'file'.
+    // If no API base is set, we simulate QC to keep the UI usable.
+    if (!base.trim()) {
+      await sleep(500);
+      setQcStatus("done");
+      log("Quality control done (simulated). No API base URL set.");
+      return;
+    }
+
+    const form = new FormData();
+    form.append("file", file, file.name);
+
+    log(`Calling backend: POST ${buildUrl(base, "/qc")}  file=${file.name} (${prettyBytes(file.size)})`);
+
+    let res = await runWithBackend({ apiBase: base, path: "/qc", form });
+
+    // Some deployments define /qc/ with a trailing slash. Avoid redirects that can drop multipart bodies.
+    if (!res.ok && isMissingFile422(res.payload)) {
+      log("Backend reports missing form field 'file'. Retrying with /qc/ …");
+      res = await runWithBackend({ apiBase: base, path: "/qc/", form });
+    }
+
+    if (res.ok) {
+      setQcStatus("done");
+      const payload = res.payload ?? { message: res.message };
+      const txt = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+      log("Quality control done (backend). QC summary received.");
+      log(`QC summary: ${txt.length > 220 ? `${txt.slice(0, 220)}…` : txt}`);
+    } else {
+      setQcStatus("error");
+      log(`Quality control failed: ${res.message}`);
+    }
   }
 
   async function doNormalization() {
@@ -492,53 +527,54 @@ export default function App() {
     }
   }
 
-async function doHarmony() {
-  if (normStatus !== "done") {
-    log("Batch correction is locked. Complete normalization first.");
-    return;
+  async function doHarmony() {
+    if (normStatus !== "done") {
+      log("Batch correction is locked. Complete normalization first.");
+      return;
+    }
+    if (!file) {
+      log("No file selected.");
+      return;
+    }
+
+    setHarmStatus("running");
+    log("Harmony batch correction started…");
+
+    const base = sanitizeApiBase(apiBase);
+
+    // Backend expects: POST /harmony with multipart/form-data and required field name 'file'.
+    // If no API base is set, we simulate to keep the UI usable.
+    if (!base.trim()) {
+      await sleep(700);
+      setHarmStatus("done");
+      log("Harmony batch correction done (simulated). No API base URL set.");
+      return;
+    }
+
+    const form = new FormData();
+    form.append("file", file, file.name);
+
+    log(`Calling backend: POST ${buildUrl(base, "/harmony")}  file=${file.name} (${prettyBytes(file.size)})`);
+
+    let res = await runWithBackend({ apiBase: base, path: "/harmony", form });
+
+    // Some deployments define /harmony/ with a trailing slash. Avoid redirects that can drop multipart bodies.
+    if (!res.ok && isMissingFile422(res.payload)) {
+      log("Backend reports missing form field 'file'. Retrying with /harmony/ …");
+      res = await runWithBackend({ apiBase: base, path: "/harmony/", form });
+    }
+
+    if (res.ok) {
+      setHarmStatus("done");
+      const payload = res.payload ?? { message: res.message };
+      const txt = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+      log("Harmony batch correction done (backend). Harmony output received.");
+      log(`Harmony output: ${txt.length > 220 ? `${txt.slice(0, 220)}…` : txt}`);
+    } else {
+      setHarmStatus("error");
+      log(`Harmony batch correction failed: ${res.message}`);
+    }
   }
-  if (!file) {
-    log("No file selected.");
-    return;
-  }
-
-  setHarmStatus("running");
-  log("Harmony batch correction started…");
-
-  const base = sanitizeApiBase(apiBase);
-
-  if (!base.trim()) {
-    log("No API base URL set. Running simulated batch correction.");
-    await sleep(700);
-    setHarmStatus("done");
-    log("Harmony batch correction done (simulated). No API base URL set.");
-    return;
-  }
-
-  const form = new FormData();
-  form.append("file", file, file.name);
-
-  log(`Calling backend: POST ${buildUrl(base, "/harmony")}  file=${file.name} (${prettyBytes(file.size)})`);
-
-  let res = await runWithBackend({ apiBase: base, path: "/harmony", form });
-
-  if (!res.ok && isMissingFile422(res.payload)) {
-    log("Backend reports missing form field 'file'. Retrying with /harmony/ …");
-    res = await runWithBackend({ apiBase: base, path: "/harmony/", form });
-  }
-
-  if (res.ok) {
-    setHarmStatus("done");
-    const payload = res.payload ?? { message: res.message };
-    const txt = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
-    log("Harmony batch correction done (backend).");
-    log(`Harmony output: ${txt.length > 220 ? `${txt.slice(0, 220)}…` : txt}`);
-  } else {
-    setHarmStatus("error");
-    log(`Harmony batch correction failed: ${res.message}`);
-  }
-}
-
 
   async function doClustering() {
     if (harmStatus !== "done") {
@@ -932,7 +968,7 @@ async function doHarmony() {
             status={qcStatus}
             actionLabel="Run quality control"
             onRun={doQC}
-            hint="Simulated QC. Unlocks normalization."
+            hint="Calls POST /qc on your backend using the selected file. If API base URL is empty, QC is simulated. Unlocks normalization."
           />
         );
       case "normalization":
@@ -954,7 +990,7 @@ async function doHarmony() {
             status={harmStatus}
             actionLabel="Run batch correction"
             onRun={doHarmony}
-            hint="Simulated batch correction. Unlocks clustering."
+            hint="Calls POST /harmony on your backend using the selected file. If API base URL is empty, Harmony is simulated. Unlocks clustering."
           />
         );
       case "clustering":
