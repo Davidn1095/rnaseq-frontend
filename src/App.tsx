@@ -440,9 +440,42 @@ export default function App() {
   async function doUpload() {
     if (!file) return;
 
-    // The deployed backend currently has no /upload endpoint.
-    // "Upload" is a local UI action that unlocks QC.
-    log("Upload set locally. Backend has no /upload route.");
+    const base = sanitizeApiBase(apiBase);
+
+    // Prefer backend /upload if available (so the backend can mint a run_id and persist artifacts).
+    if (base.trim()) {
+      const form = new FormData();
+    form.append("file", file, file.name);
+    if (runId) form.append("run_id", runId);
+      log(`Calling backend: POST ${buildUrl(base, "/upload")}  file=${file.name} (${prettyBytes(file.size)})`);
+
+      const res = await runWithBackend({ apiBase: base, path: "/upload", form });
+
+      if (res.ok) {
+        setUploaded(true);
+        const payload = res.payload;
+        if (payload && typeof payload === "object" && "run_id" in (payload as any)) {
+          const rid = String((payload as any).run_id);
+          setRunId(rid);
+          log(`Captured run_id: ${rid}`);
+        }
+        log("Upload done (backend). ");
+        return;
+      }
+
+      // If the backend does not implement /upload, fall back to local upload.
+      if (String(res.message).includes("API error 404")) {
+        log("Upload set locally. Backend has no /upload route.");
+        setUploaded(true);
+        return;
+      }
+
+      log(`Upload failed: ${res.message}. Falling back to local upload.`);
+      setUploaded(true);
+      return;
+    }
+
+    log("Upload set locally. No API base URL set.");
     setUploaded(true);
   }
 
@@ -472,7 +505,10 @@ export default function App() {
 
     const form = new FormData();
     form.append("file", file, file.name);
-    log(`Calling backend: POST ${buildUrl(base, "/qc")}  file=${file.name} (${prettyBytes(file.size)})`);
+    if (runId) form.append("run_id", runId);
+    log(
+      `Calling backend: POST ${buildUrl(base, "/qc")}  file=${file.name} (${prettyBytes(file.size)})${runId ? `  run_id=${runId}` : ""}`
+    );
 
     let res = await runWithBackend({ apiBase: base, path: "/qc", form });
 
@@ -519,7 +555,7 @@ export default function App() {
     const base = sanitizeApiBase(apiBase);
 
     if (base.trim()) {
-      log(`Calling backend: POST ${buildUrl(base, "/normalize")}  file=${file.name} (${prettyBytes(file.size)})`);
+      log(`Calling backend: POST ${buildUrl(base, "/normalize")}  file=${file.name} (${prettyBytes(file.size)})${runId ? `  run_id=${runId}` : ""}`);
     } else {
       log("No API base URL set. Running simulated normalization.");
     }
@@ -581,10 +617,8 @@ export default function App() {
     let res = await runWithBackend({ apiBase: base, path: "/harmony", json: { run_id: runId } });
 
     // Fallback for backends that implemented /harmony as multipart.
-    if (!res.ok && isMissingRunId422(res.payload)) {
+    if (!res.ok && (isMissingRunId422(res.payload) || isRunIdNotFound(res.payload))) {
       log("Backend reports missing run_id in JSON. Retrying as multipart…");
-      const form = new FormData();
-      form.append("run_id", runId);
       if (file) form.append("file", file, file.name);
       res = await runWithBackend({ apiBase: base, path: "/harmony", form });
     }
@@ -706,8 +740,7 @@ export default function App() {
       await sleep(300);
 
       if (normalizedText) {
-        const looksLikeTable = normalizedText.includes("
-") && (normalizedText.includes(",") || normalizedText.includes("	"));
+        const looksLikeTable = normalizedText.includes("\n") && (normalizedText.includes(",") || normalizedText.includes("\t"));
         const mime = looksLikeTable ? "text/csv" : "application/json";
         const ext = looksLikeTable ? "csv" : "json";
         const blob = new Blob([normalizedText], { type: mime });
@@ -1098,7 +1131,7 @@ export default function App() {
             status={harmStatus}
             actionLabel="Run batch correction"
             onRun={doHarmony}
-            hint="Calls POST /harmony on your backend using the selected file. If API base URL is empty, Harmony is simulated. Unlocks clustering."
+            hint="Calls POST /harmony on your backend using run_id from QC. If API base URL is empty, Harmony is simulated. Unlocks clustering."
           />
         );
       case "clustering":
@@ -1109,7 +1142,7 @@ export default function App() {
             status={clusStatus}
             actionLabel="Run clustering"
             onRun={doClustering}
-            hint="Simulated clustering. Unlocks ML training."
+            hint="Calls POST /cluster on your backend using run_id. If API base URL is empty, clustering is simulated. Unlocks ML training."
           />
         );
       case "ml_training":
@@ -1120,7 +1153,7 @@ export default function App() {
             status={trainStatus}
             actionLabel="Run training"
             onRun={doTraining}
-            hint="Simulated training. Unlocks results."
+            hint="Calls POST /train on your backend using run_id. If API base URL is empty, training is simulated. Unlocks results."
           />
         );
       case "results":
