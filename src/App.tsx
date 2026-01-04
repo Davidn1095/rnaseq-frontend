@@ -891,6 +891,28 @@ export default function App() {
         const ct = (res.headers.get("content-type") || "").toLowerCase();
         if (ct.includes("application/json")) {
           const data = await safeJson(res);
+          const dlUrl =
+            data && typeof data === "object"
+              ? // common keys when the backend returns a signed URL instead of the binary
+                (data as any).download_url ??
+                (data as any).downloadUrl ??
+                (data as any).signed_url ??
+                (data as any).signedUrl ??
+                (data as any).url
+              : null;
+
+          if (typeof dlUrl === "string" && dlUrl.trim()) {
+            const a = document.createElement("a");
+            a.href = dlUrl;
+            a.download = "rnaseq_export.zip";
+            a.target = "_blank";
+            a.rel = "noopener";
+            a.click();
+            setExportStatus("done");
+            log("Export opened via download_url.");
+            return;
+          }
+
           lastErr = `Unexpected JSON response: ${typeof data === "string" ? data : JSON.stringify(data)}`;
           log(`Export attempt failed: ${lastErr}`);
           continue;
