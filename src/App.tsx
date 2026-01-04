@@ -296,6 +296,9 @@ export default function App() {
   const [trainStatus, setTrainStatus] = useState<StepStatus>("idle");
   const [exportStatus, setExportStatus] = useState<StepStatus>("idle");
 
+  // Backend currently exposes POST /normalize only. We store its returned content for export.
+  const [normalizedText, setNormalizedText] = useState<string | null>(null);
+
   const [logLines, setLogLines] = useState<string[]>([]);
   const logRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -356,6 +359,7 @@ export default function App() {
     setClusStatus("idle");
     setTrainStatus("idle");
     setExportStatus("idle");
+    setNormalizedText(null);
 
     setLogLines([]);
 
@@ -372,18 +376,10 @@ export default function App() {
   async function doUpload() {
     if (!file) return;
 
-    log("Uploading input…");
-    const form = new FormData();
-    form.append("file", file);
-
-    const res = await runWithBackend({ apiBase, path: "/upload", form });
-    if (res.ok) {
-      setUploaded(true);
-      log(res.payload ? "Upload completed with API response." : "Upload completed.");
-    } else {
-      log(`Upload failed: ${res.message}`);
-      setUploaded(false);
-    }
+    // The deployed backend currently has no /upload endpoint.
+    // "Upload" is a local UI action that unlocks QC.
+    log("Upload set locally. Backend has no /upload route.");
+    setUploaded(true);
   }
 
   async function doQC() {
@@ -391,22 +387,13 @@ export default function App() {
       log("QC is locked. Upload data first.");
       return;
     }
+
+    // Backend has no /qc. Simulate QC to keep the UI flow.
     setQcStatus("running");
     log("Quality control started…");
-
-    const res = await runWithBackend({
-      apiBase,
-      path: "/qc",
-      json: { min_counts_per_gene: 1, min_counts_per_cell: 1 },
-    });
-
-    if (res.ok) {
-      setQcStatus("done");
-      log("Quality control done.");
-    } else {
-      setQcStatus("error");
-      log(`Quality control failed: ${res.message}`);
-    }
+    await sleep(500);
+    setQcStatus("done");
+    log("Quality control done (simulated). Backend endpoint /qc not available.");
   }
 
   async function doNormalization() {
@@ -414,18 +401,29 @@ export default function App() {
       log("Normalization is locked. Complete QC first.");
       return;
     }
+    if (!file) {
+      log("No file selected.");
+      return;
+    }
+
     setNormStatus("running");
     log("Normalization started…");
 
-    const res = await runWithBackend({
-      apiBase,
-      path: "/normalize",
-      json: { method: "log1p", scale: true },
-    });
+    // Backend expects: POST /normalize with multipart/form-data and required field name 'file'.
+    const form = new FormData();
+    form.append("file", file);
+
+    const res = await runWithBackend({ apiBase, path: "/normalize", form });
 
     if (res.ok) {
       setNormStatus("done");
-      log("Normalization done.");
+
+      // FastAPI returns JSON string when returning a plain str. Keep it generic.
+      const payload = res.payload;
+      const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+      setNormalizedText(text);
+
+      log("Normalization done (backend). Output stored for export.");
     } else {
       setNormStatus("error");
       log(`Normalization failed: ${res.message}`);
@@ -437,22 +435,13 @@ export default function App() {
       log("Batch correction is locked. Complete normalization first.");
       return;
     }
+
+    // Backend has no /harmony. Simulate to keep the UI flow.
     setHarmStatus("running");
     log("Harmony batch correction started…");
-
-    const res = await runWithBackend({
-      apiBase,
-      path: "/harmony",
-      json: { batch_key: "batch", theta: 2, max_iter_harmony: 10 },
-    });
-
-    if (res.ok) {
-      setHarmStatus("done");
-      log("Harmony batch correction done.");
-    } else {
-      setHarmStatus("error");
-      log(`Harmony failed: ${res.message}`);
-    }
+    await sleep(700);
+    setHarmStatus("done");
+    log("Harmony batch correction done (simulated). Backend endpoint /harmony not available.");
   }
 
   async function doClustering() {
@@ -460,22 +449,13 @@ export default function App() {
       log("Clustering is locked. Complete batch correction first.");
       return;
     }
+
+    // Backend has no /cluster. Simulate to keep the UI flow.
     setClusStatus("running");
     log("Clustering started…");
-
-    const res = await runWithBackend({
-      apiBase,
-      path: "/cluster",
-      json: { method: "leiden", n_pcs: 30, resolution: 0.8, embedding: "umap" },
-    });
-
-    if (res.ok) {
-      setClusStatus("done");
-      log("Clustering done.");
-    } else {
-      setClusStatus("error");
-      log(`Clustering failed: ${res.message}`);
-    }
+    await sleep(700);
+    setClusStatus("done");
+    log("Clustering done (simulated). Backend endpoint /cluster not available.");
   }
 
   async function doTraining() {
@@ -483,22 +463,13 @@ export default function App() {
       log("Training is locked. Complete clustering first.");
       return;
     }
+
+    // Backend has no /train. Simulate to keep the UI flow.
     setTrainStatus("running");
     log("ML training started…");
-
-    const res = await runWithBackend({
-      apiBase,
-      path: "/train",
-      json: { model: "logistic_regression", split: 0.8 },
-    });
-
-    if (res.ok) {
-      setTrainStatus("done");
-      log("ML training done.");
-    } else {
-      setTrainStatus("error");
-      log(`Training failed: ${res.message}`);
-    }
+    await sleep(700);
+    setTrainStatus("done");
+    log("ML training done (simulated). Backend endpoint /train not available.");
   }
 
   async function doExport() {
@@ -510,49 +481,47 @@ export default function App() {
     setExportStatus("running");
     log("Preparing export…");
 
-    const res = await runWithBackend({
-      apiBase,
-      path: "/export",
-      method: "POST",
-      json: { format: "zip" },
-    });
+    // Backend has no /export. Export locally.
+    await sleep(300);
 
-    if (!apiBase.trim()) {
-      await sleep(500);
-      const content = JSON.stringify(
-        {
-          message: "Demo export. Set API base URL to download real results.",
-          file: fileInfo?.name ?? null,
-          steps: {
-            quality_control: qcStatus,
-            normalization: normStatus,
-            harmony: harmStatus,
-            clustering: clusStatus,
-            training: trainStatus,
-          },
-        },
-        null,
-        2
-      );
-      const blob = new Blob([content], { type: "application/json" });
+    if (normalizedText) {
+      const looksLikeTable = normalizedText.includes("
+") && (normalizedText.includes(",") || normalizedText.includes("	"));
+      const mime = looksLikeTable ? "text/csv" : "application/json";
+      const ext = looksLikeTable ? "csv" : "json";
+      const blob = new Blob([normalizedText], { type: mime });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = "rnaseq_pipeline_demo_export.json";
+      a.download = `normalized_output.${ext}`;
       a.click();
       URL.revokeObjectURL(a.href);
-
-      setExportStatus("done");
-      log("Export downloaded (demo).");
-      return;
-    }
-
-    if (res.ok) {
-      setExportStatus("done");
-      log("Export requested. If your backend returns a URL, add a download step here.");
+      log(`Downloaded normalized_output.${ext}.`);
     } else {
-      setExportStatus("error");
-      log(`Export failed: ${res.message}`);
+      log("No normalized output stored yet. Run Normalization first.");
     }
+
+    const summary = {
+      message: "Export generated in the browser. Backend currently exposes /normalize only.",
+      file: fileInfo?.name ?? null,
+      steps: {
+        quality_control: qcStatus,
+        normalization: normStatus,
+        harmony: harmStatus,
+        clustering: clusStatus,
+        training: trainStatus,
+      },
+      log: logLines,
+    };
+
+    const blob2 = new Blob([JSON.stringify(summary, null, 2)], { type: "application/json" });
+    const a2 = document.createElement("a");
+    a2.href = URL.createObjectURL(blob2);
+    a2.download = "rnaseq_run_summary.json";
+    a2.click();
+    URL.revokeObjectURL(a2.href);
+
+    setExportStatus("done");
+    log("Export downloaded.");
   }
 
   function resetAll() {
@@ -566,6 +535,7 @@ export default function App() {
     setClusStatus("idle");
     setTrainStatus("idle");
     setExportStatus("idle");
+    setNormalizedText(null);
     setLogLines([]);
   }
 
@@ -614,8 +584,7 @@ export default function App() {
             placeholder="https://your-backend-xxxxx.europe-west1.run.app"
           />
           <div className="settingsHint">
-            If empty, actions run in simulated mode. If set, the app calls /upload, /qc, /normalize, /harmony, /cluster,
-            /train, /export.
+            If empty, actions run in simulated mode. If set, Normalization calls POST /normalize with multipart/form-data (file). Other steps are simulated unless you add endpoints.
           </div>
         </div>
       </details>
