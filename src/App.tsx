@@ -7,6 +7,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
  * - Can optionally call a backend if you set an API base URL in the UI
  */
 
+const APP_VERSION = "0.2.0";
+
 type PhaseKey =
   | "upload"
   | "quality_control"
@@ -91,6 +93,12 @@ function estimateMatrixShape(lines: string[]) {
   return { rows, cols };
 }
 
+function buildUrl(apiBase: string, path: string) {
+  const base = apiBase.trim().replace(/\/+$/, "");
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return `${base}${p}`;
+}
+
 let __didSelfTest = false;
 function __devSelfTest() {
   // Minimal sanity checks to prevent regressions like broken regex literals.
@@ -105,6 +113,11 @@ function __devSelfTest() {
   if (l2.length !== 2) throw new Error(`selftest: expected 2 lines, got ${l2.length}`);
   const s2 = estimateMatrixShape(l2);
   if (s2.rows !== 1 || s2.cols !== 2) throw new Error(`selftest: expected rows=1 cols=2, got ${s2.rows} ${s2.cols}`);
+  const u1 = buildUrl("https://x.test/", "/normalize");
+  if (u1 !== "https://x.test/normalize") throw new Error(`selftest: bad url build u1=${u1}`);
+
+  const u2 = buildUrl(" https://x.test ", "health");
+  if (u2 !== "https://x.test/health") throw new Error(`selftest: bad url build u2=${u2}`);
 }
 
 async function runWithBackend(opts: {
@@ -122,18 +135,27 @@ async function runWithBackend(opts: {
     return { ok: true, message: "Completed (simulated). No API base URL set." };
   }
 
-  const url = `${apiBase.replace(/\/+$/, "")}${path.startsWith("/") ? "" : "/"}${path}`;
+  const url = buildUrl(apiBase, path);
 
   const controller = new AbortController();
   const t = window.setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const res = await fetch(url, {
+    // Important: when sending FormData, do NOT set Content-Type manually.
+    // Also avoid passing `headers: undefined`.
+    const headers: Record<string, string> = { Accept: "application/json" };
+    if (!form) headers["Content-Type"] = "application/json";
+
+    const init: RequestInit = {
       method,
-      headers: form ? undefined : { "Content-Type": "application/json" },
+      headers,
       body: form ? form : json ? JSON.stringify(json) : undefined,
       signal: controller.signal,
-    });
+      mode: "cors",
+      redirect: "follow",
+    };
+
+    const res = await fetch(url, init);
 
     const data = await safeJson(res);
     if (!res.ok) {
@@ -411,19 +433,29 @@ export default function App() {
 
     // Backend expects: POST /normalize with multipart/form-data and required field name 'file'.
     const form = new FormData();
-    form.append("file", file);
+    form.append("file", file, file.name);
+
+    if (apiBase.trim()) {
+      log(`Calling backend: POST ${buildUrl(apiBase, "/normalize")}  file=${file.name} (${prettyBytes(file.size)})`);
+    } else {
+      log("No API base URL set. Running simulated normalization.");
+    }
 
     const res = await runWithBackend({ apiBase, path: "/normalize", form });
 
     if (res.ok) {
       setNormStatus("done");
 
-      // FastAPI returns JSON string when returning a plain str. Keep it generic.
-      const payload = res.payload;
-      const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
-      setNormalizedText(text);
+      // FastAPI returns a JSON string when returning a plain str. Keep it generic.
+      const payload = res.payload ?? { message: res.message };
+      const textMaybe = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+      setNormalizedText(textMaybe ?? JSON.stringify({ message: res.message }, null, 2));
 
-      log("Normalization done (backend). Output stored for export.");
+      log(
+        res.message.includes("simulated")
+          ? "Normalization done (simulated). Output stored for export."
+          : "Normalization done (backend). Output stored for export."
+      );
     } else {
       setNormStatus("error");
       log(`Normalization failed: ${res.message}`);
@@ -523,6 +555,22 @@ export default function App() {
     log("Export downloaded.");
   }
 
+  async function testHealth() {
+    if (!apiBase.trim()) {
+      log("API base URL is empty.");
+      return;
+    }
+
+    log("Health check started…");
+    const res = await runWithBackend({ apiBase, path: "/health", method: "GET" });
+
+    if (res.ok) {
+      log("Health check OK.");
+    } else {
+      log(`Health check failed: ${res.message}`);
+    }
+  }
+
   function resetAll() {
     setPhaseIndex(0);
     setFile(null);
@@ -580,10 +628,16 @@ export default function App() {
             className="settingsInput"
             value={apiBase}
             onChange={(e) => setApiBase(e.target.value)}
-            placeholder="https://your-backend-xxxxx.europe-west1.run.app"
+            placeholder="https://rnaseq-backend-xxxxx.europe-west1.run.app"
           />
           <div className="settingsHint">
-            If empty, actions run in simulated mode. If set, Normalization calls POST /normalize with multipart/form-data (file). Other steps are simulated unless you add endpoints.
+            Leave empty to run in browser simulated mode. If set, Normalization calls POST /normalize with multipart/form-data field name <b>file</b>.
+          </div>
+          <div className="settingsActions">
+            <button className="ghostBtn" type="button" onClick={testHealth} disabled={!apiBase.trim()}>
+              Test /health
+            </button>
+            <div className="settingsMini">Resolved normalize URL: {apiBase.trim() ? buildUrl(apiBase, "/normalize") : "—"}</div>
           </div>
         </div>
       </details>
@@ -1190,6 +1244,19 @@ export default function App() {
           line-height: 1.35;
         }
 
+        .settingsActions {
+          margin-top: 10px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+
+        .settingsMini {
+          font-size: 12px;
+          color: #64748b;
+        }
+
         .logWrap {
           margin-top: 14px;
           border: 1px solid rgba(15, 23, 42, 0.08);
@@ -1267,7 +1334,7 @@ export default function App() {
       <div className="frame">
         <div className="header">
           <div className="headerTitle">Single-cell RNA-seq ML pipeline</div>
-          <div className="headerSub">Upload, QC, normalize, Harmony in PC space, cluster, train, inspect.</div>
+          <div className="headerSub">Upload, QC, normalize, Harmony in PC space, cluster, train, inspect. v{APP_VERSION}</div>
         </div>
 
         <div className="tabs">
