@@ -32,7 +32,7 @@ type RunResult = {
   payload?: unknown;
 };
 
-$1
+
 function isMissingRunId422(payload: any) {
   const detail = payload?.detail;
   if (!Array.isArray(detail)) return false;
@@ -44,10 +44,23 @@ function isMissingRunId422(payload: any) {
   });
 }
 
-});
+
+
+function isMissingFile422(payload: any) {
+  const detail = payload?.detail;
+  if (!Array.isArray(detail)) return false;
+  return detail.some((d: any) => {
+    const loc = Array.isArray(d?.loc) ? d.loc.join(".") : "";
+    const msg = typeof d?.msg === "string" ? d.msg.toLowerCase() : "";
+    const typ = typeof d?.type === "string" ? d.type.toLowerCase() : "";
+    return loc === "body.file" && (typ === "missing" || msg.includes("field required"));
+  });
 }
 
-
+function isRunIdNotFound(payload: any) {
+  const d = payload?.detail;
+  return typeof d === "string" && d.toLowerCase().includes("run_id not found");
+}
 
 const PHASES: Phase[] = [
   { key: "upload", title: "Upload Data", subtitle: "Load counts matrix" },
@@ -459,8 +472,6 @@ export default function App() {
 
     const form = new FormData();
     form.append("file", file, file.name);
-    if (runId) form.append("run_id", runId);
-
     log(`Calling backend: POST ${buildUrl(base, "/qc")}  file=${file.name} (${prettyBytes(file.size)})`);
 
     let res = await runWithBackend({ apiBase: base, path: "/qc", form });
@@ -545,23 +556,18 @@ export default function App() {
       log("Batch correction is locked. Complete normalization first.");
       return;
     }
-    if (!file) {
-      log("No file selected.");
-      return;
-    }
-
-    setHarmStatus("running");
-    log("Harmony batch correction started…");
-
     if (!runId) {
       setHarmStatus("error");
       log("Harmony requires run_id from QC. Run QC again.");
       return;
     }
 
+    setHarmStatus("running");
+    log("Harmony batch correction started…");
+
     const base = sanitizeApiBase(apiBase);
 
-    // Backend expects: POST /harmony with multipart/form-data and required field name 'run_id'.
+    // Backend expects: POST /harmony with JSON body { run_id }.
     // If no API base is set, we simulate to keep the UI usable.
     if (!base.trim()) {
       await sleep(700);
@@ -570,19 +576,24 @@ export default function App() {
       return;
     }
 
-    const form = new FormData();
-    form.append("run_id", runId);
-    form.append("file", file, file.name)log(`Calling backend: POST ${buildUrl(base, "/harmony")}  run_id=${runId} file=${file.name} (${prettyBytes(file.size)})`);tyByte$1    // If backend expects JSON body (run_id in JSON), retry with JSON.
+    log(`Calling backend: POST ${buildUrl(base, "/harmony")}  run_id=${runId}`);
+
+    let res = await runWithBackend({ apiBase: base, path: "/harmony", json: { run_id: runId } });
+
+    // Fallback for backends that implemented /harmony as multipart.
     if (!res.ok && isMissingRunId422(res.payload)) {
-      log("Backend reports missing run_id in multipart. Retrying by sending JSON body {run_id} …");
-      res = await runWithBackend({
-        apiBase: base,
-        path: "/harmony",
-        json: { run_id: runId },
-      });
+      log("Backend reports missing run_id in JSON. Retrying as multipart…");
+      const form = new FormData();
+      form.append("run_id", runId);
+      if (file) form.append("file", file, file.name);
+      res = await runWithBackend({ apiBase: base, path: "/harmony", form });
     }
 
-$2n done (backend). Harmony output received.");
+    if (res.ok) {
+      setHarmStatus("done");
+      const payload = res.payload ?? { message: res.message };
+      const txt = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+      log("Harmony batch correction done (backend). Harmony output received.");
       log(`Harmony output: ${txt.length > 220 ? `${txt.slice(0, 220)}…` : txt}`);
     } else {
       setHarmStatus("error");
@@ -618,7 +629,7 @@ $2n done (backend). Harmony output received.");
 
     log(`Calling backend: POST ${buildUrl(base, "/cluster")}  run_id=${runId}`);
 
-    let res = await runWithBackend({ apiBase: base, path: "/cluster", form });
+    const res = await runWithBackend({ apiBase: base, path: "/cluster", json: { run_id: runId } });
 
     if (res.ok) {
       setClusStatus("done");
@@ -660,7 +671,7 @@ $2n done (backend). Harmony output received.");
 
     log(`Calling backend: POST ${buildUrl(base, "/train")}  run_id=${runId}`);
 
-    const res = await runWithBackend({ apiBase: base, path: "/train", form });
+    const res = await runWithBackend({ apiBase: base, path: "/train", json: { run_id: runId } });
 
     if (res.ok) {
       setTrainStatus("done");
@@ -697,7 +708,9 @@ $2n done (backend). Harmony output received.");
       if (normalizedText) {
         const looksLikeTable = normalizedText.includes("
 ") && (normalizedText.includes(",") || normalizedText.includes("	"));
-        const mime = looksLikeTable ? "text/csv" : "applicat: mime });
+        const mime = looksLikeTable ? "text/csv" : "application/json";
+        const ext = looksLikeTable ? "csv" : "json";
+        const blob = new Blob([normalizedText], { type: mime });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
         a.download = `normalized_output.${ext}`;
