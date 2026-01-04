@@ -485,8 +485,7 @@ export default function App() {
     await sleep(300);
 
     if (normalizedText) {
-      const looksLikeTable = normalizedText.includes("
-") && (normalizedText.includes(",") || normalizedText.includes("	"));
+      const looksLikeTable = normalizedText.includes("\n") && (normalizedText.includes(",") || normalizedText.includes("\t"));
       const mime = looksLikeTable ? "text/csv" : "application/json";
       const ext = looksLikeTable ? "csv" : "json";
       const blob = new Blob([normalizedText], { type: mime });
@@ -810,7 +809,7 @@ export default function App() {
             status={qcStatus}
             actionLabel="Run quality control"
             onRun={doQC}
-            hint="Runs /qc. Unlocks normalization."
+            hint="Simulated QC. Unlocks normalization."
           />
         );
       case "normalization":
@@ -821,7 +820,7 @@ export default function App() {
             status={normStatus}
             actionLabel="Run normalization"
             onRun={doNormalization}
-            hint="Runs /normalize. Unlocks batch correction."
+            hint="Calls POST /normalize on your backend. Upload uses the selected file."
           />
         );
       case "batch_correction":
@@ -832,7 +831,7 @@ export default function App() {
             status={harmStatus}
             actionLabel="Run batch correction"
             onRun={doHarmony}
-            hint="Runs /harmony. Unlocks clustering."
+            hint="Simulated batch correction. Unlocks clustering."
           />
         );
       case "clustering":
@@ -843,7 +842,7 @@ export default function App() {
             status={clusStatus}
             actionLabel="Run clustering"
             onRun={doClustering}
-            hint="Runs /cluster. Unlocks ML training."
+            hint="Simulated clustering. Unlocks ML training."
           />
         );
       case "ml_training":
@@ -854,7 +853,7 @@ export default function App() {
             status={trainStatus}
             actionLabel="Run training"
             onRun={doTraining}
-            hint="Runs /train. Unlocks results."
+            hint="Simulated training. Unlocks results."
           />
         );
       case "results":
