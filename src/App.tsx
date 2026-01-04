@@ -707,21 +707,39 @@ export default function App() {
 
     log(`Calling backend: POST ${buildUrl(base, "/train")}  run_id=${runId}`);
 
-    // Prefer JSON (matches the OpenAPI schema). If the request fails (some proxies / deployments), retry using multipart.
-    let res = await runWithBackend({ apiBase: base, path: "/train", json: { run_id: runId }, timeoutMs: 180000 });
+    // Prefer multipart to avoid CORS preflight and to work across stricter proxies.
+    // If your backend only accepts JSON, we fall back automatically.
+    const form = new FormData();
+    form.append("run_id", runId);
+
+    let res = await runWithBackend({ apiBase: base, path: "/train", form, timeoutMs: 180000 });
+
+    // If the backend expects JSON body, it will typically respond 422 (missing body.run_id).
+    if (!res.ok && isMissingRunId422(res.payload)) {
+      log("Backend expects JSON for /train. Retrying as JSON…");
+      res = await runWithBackend({
+        apiBase: base,
+        path: "/train",
+        json: { run_id: runId },
+        timeoutMs: 180000,
+      });
+    }
 
     // Some deployments define /train/ with a trailing slash.
     if (!res.ok && isMissingRunId422(res.payload)) {
-      log("Backend reports missing run_id in JSON. Retrying with /train/ …");
-      res = await runWithBackend({ apiBase: base, path: "/train/", json: { run_id: runId }, timeoutMs: 180000 });
+      log("Retrying /train/ as JSON…");
+      res = await runWithBackend({
+        apiBase: base,
+        path: "/train/",
+        json: { run_id: runId },
+        timeoutMs: 180000,
+      });
     }
 
-    // Multipart fallback (avoids JSON preflight in some environments).
-    if (!res.ok && (isMissingRunId422(res.payload) || isRunIdNotFound(res.payload))) {
-      log("Retrying /train as multipart…");
-      const form = new FormData();
-      form.append("run_id", runId);
-      res = await runWithBackend({ apiBase: base, path: "/train", form, timeoutMs: 180000 });
+    // Last resort: multipart to /train/.
+    if (!res.ok && isRunIdNotFound(res.payload)) {
+      log("Retrying /train/ as multipart…");
+      res = await runWithBackend({ apiBase: base, path: "/train/", form, timeoutMs: 180000 });
     }
 
     if (res.ok) {
