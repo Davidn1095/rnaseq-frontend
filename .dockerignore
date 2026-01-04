@@ -1,5 +1,10 @@
 node_modules
 dist
 .git
+<<<<<<< HEAD
+.gitignore
+README.md
+=======
+>>>>>>> 4b6168a (Add Dockerfile for Cloud Run)
 npm-debug.log
 .DS_Store
