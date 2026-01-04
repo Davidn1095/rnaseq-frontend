@@ -32,16 +32,21 @@ type RunResult = {
   payload?: unknown;
 };
 
-function isMissingFile422(payload: any) {
+$1
+function isMissingRunId422(payload: any) {
   const detail = payload?.detail;
   if (!Array.isArray(detail)) return false;
   return detail.some((d: any) => {
     const loc = Array.isArray(d?.loc) ? d.loc.join(".") : "";
     const msg = typeof d?.msg === "string" ? d.msg.toLowerCase() : "";
     const typ = typeof d?.type === "string" ? d.type.toLowerCase() : "";
-    return loc === "body.file" && (typ === "missing" || msg.includes("field required"));
+    return loc === "body.run_id" && (typ === "missing" || msg.includes("field required"));
   });
 }
+
+});
+}
+
 
 
 const PHASES: Phase[] = [
@@ -567,23 +572,17 @@ export default function App() {
 
     const form = new FormData();
     form.append("run_id", runId);
-    form.append("file", file, file.name);
-
-    log(`Calling backend: POST ${buildUrl(base, "/harmony")}  file=${file.name} (${prettyBytes(file.size)})`);
-
-    let res = await runWithBackend({ apiBase: base, path: "/harmony", form });
-
-    // Some deployments define /harmony/ with a trailing slash. Avoid redirects that can drop multipart bodies.
-    if (!res.ok && isMissingFile422(res.payload)) {
-      log("Backend reports missing form field 'file'. Retrying with /harmony/ …");
-      res = await runWithBackend({ apiBase: base, path: "/harmony/", form });
+    form.append("file", file, file.name)log(`Calling backend: POST ${buildUrl(base, "/harmony")}  run_id=${runId} file=${file.name} (${prettyBytes(file.size)})`);tyByte$1    // If backend expects JSON body (run_id in JSON), retry with JSON.
+    if (!res.ok && isMissingRunId422(res.payload)) {
+      log("Backend reports missing run_id in multipart. Retrying by sending JSON body {run_id} …");
+      res = await runWithBackend({
+        apiBase: base,
+        path: "/harmony",
+        json: { run_id: runId },
+      });
     }
 
-    if (res.ok) {
-      setHarmStatus("done");
-      const payload = res.payload ?? { message: res.message };
-      const txt = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
-      log("Harmony batch correction done (backend). Harmony output received.");
+$2n done (backend). Harmony output received.");
       log(`Harmony output: ${txt.length > 220 ? `${txt.slice(0, 220)}…` : txt}`);
     } else {
       setHarmStatus("error");
@@ -698,9 +697,7 @@ export default function App() {
       if (normalizedText) {
         const looksLikeTable = normalizedText.includes("
 ") && (normalizedText.includes(",") || normalizedText.includes("	"));
-        const mime = looksLikeTable ? "text/csv" : "application/json";
-        const ext = looksLikeTable ? "csv" : "json";
-        const blob = new Blob([normalizedText], { type: mime });
+        const mime = looksLikeTable ? "text/csv" : "applicat: mime });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
         a.download = `normalized_output.${ext}`;
