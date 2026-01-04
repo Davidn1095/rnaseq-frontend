@@ -445,8 +445,8 @@ export default function App() {
     // Prefer backend /upload if available (so the backend can mint a run_id and persist artifacts).
     if (base.trim()) {
       const form = new FormData();
-    form.append("file", file, file.name);
-    if (runId) form.append("run_id", runId);
+      form.append("file", file, file.name);
+      if (runId) form.append("run_id", runId);
       log(`Calling backend: POST ${buildUrl(base, "/upload")}  file=${file.name} (${prettyBytes(file.size)})`);
 
       const res = await runWithBackend({ apiBase: base, path: "/upload", form });
@@ -707,26 +707,25 @@ export default function App() {
 
     log(`Calling backend: POST ${buildUrl(base, "/train")}  run_id=${runId}`);
 
-    // Prefer multipart to avoid CORS preflight and to work across stricter proxies.
-    // If your backend only accepts JSON, we fall back automatically.
-    const form = new FormData();
-    form.append("run_id", runId);
+    // Prefer JSON first. Swagger indicates /train expects a JSON body { run_id }.
+    let res = await runWithBackend({
+      apiBase: base,
+      path: "/train",
+      json: { run_id: runId },
+      timeoutMs: 180000,
+    });
 
-    let res = await runWithBackend({ apiBase: base, path: "/train", form, timeoutMs: 180000 });
-
-    // If the backend expects JSON body, it will typically respond 422 (missing body.run_id).
-    if (!res.ok && isMissingRunId422(res.payload)) {
-      log("Backend expects JSON for /train. Retrying as JSON…");
-      res = await runWithBackend({
-        apiBase: base,
-        path: "/train",
-        json: { run_id: runId },
-        timeoutMs: 180000,
-      });
+    // Some backends implement /train as multipart. Retry if JSON was rejected.
+    if (!res.ok) {
+      log("Retrying /train as multipart…");
+      const form = new FormData();
+      form.append("run_id", runId);
+      if (file) form.append("file", file, file.name);
+      res = await runWithBackend({ apiBase: base, path: "/train", form, timeoutMs: 180000 });
     }
 
     // Some deployments define /train/ with a trailing slash.
-    if (!res.ok && isMissingRunId422(res.payload)) {
+    if (!res.ok) {
       log("Retrying /train/ as JSON…");
       res = await runWithBackend({
         apiBase: base,
@@ -736,9 +735,11 @@ export default function App() {
       });
     }
 
-    // Last resort: multipart to /train/.
-    if (!res.ok && isRunIdNotFound(res.payload)) {
+    if (!res.ok) {
       log("Retrying /train/ as multipart…");
+      const form = new FormData();
+      form.append("run_id", runId);
+      if (file) form.append("file", file, file.name);
       res = await runWithBackend({ apiBase: base, path: "/train/", form, timeoutMs: 180000 });
     }
 
@@ -775,7 +776,9 @@ export default function App() {
       await sleep(300);
 
       if (normalizedText) {
-        const looksLikeTable = normalizedText.includes("\n") && (normalizedText.includes(",") || normalizedText.includes("\t"));
+        const looksLikeTable =
+          normalizedText.includes("
+") && (normalizedText.includes(",") || normalizedText.includes("	"));
         const mime = looksLikeTable ? "text/csv" : "application/json";
         const ext = looksLikeTable ? "csv" : "json";
         const blob = new Blob([normalizedText], { type: mime });
@@ -795,38 +798,120 @@ export default function App() {
     }
 
     // Backend export: download a zip bundle.
-    const url = buildUrl(base, "/export");
+    // Try JSON first, then multipart (with file) and with trailing slash.
+    const attempts: Array<{ url: string; init: RequestInit; label: string }> = [];
+
+    const url1 = buildUrl(base, "/export");
+    const url2 = buildUrl(base, "/export/");
+
+    attempts.push({
+      url: url1,
+      init: {
+        method: "POST",
+        headers: {
+          Accept: "application/zip, application/octet-stream, application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ run_id: runId }),
+        mode: "cors",
+        redirect: "follow",
+      },
+      label: "POST /export (JSON)",
+    });
+
+    attempts.push({
+      url: url2,
+      init: {
+        method: "POST",
+        headers: {
+          Accept: "application/zip, application/octet-stream, application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ run_id: runId }),
+        mode: "cors",
+        redirect: "follow",
+      },
+      label: "POST /export/ (JSON)",
+    });
+
     const form = new FormData();
     form.append("run_id", runId);
+    if (file) form.append("file", file, file.name);
 
-    try {
-      const res = await fetch(url, {
+    attempts.push({
+      url: url1,
+      init: {
         method: "POST",
-        headers: { Accept: "application/zip" },
+        headers: { Accept: "application/zip, application/octet-stream, application/json" },
         body: form,
         mode: "cors",
         redirect: "follow",
-      });
+      },
+      label: "POST /export (multipart)",
+    });
 
-      if (!res.ok) {
-        const data = await safeJson(res);
-        setExportStatus("error");
-        log(`Export failed: API error ${res.status}: ${typeof data === "string" ? data : JSON.stringify(data)}`);
+    attempts.push({
+      url: url2,
+      init: {
+        method: "POST",
+        headers: { Accept: "application/zip, application/octet-stream, application/json" },
+        body: form,
+        mode: "cors",
+        redirect: "follow",
+      },
+      label: "POST /export/ (multipart)",
+    });
+
+    const controller = new AbortController();
+    const timeoutMs = 180000;
+    const t = window.setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      let lastErr: string | null = null;
+
+      for (const a of attempts) {
+        log(`Calling backend: ${a.label}  run_id=${runId}`);
+
+        let res: Response;
+        try {
+          res = await fetch(a.url, { ...a.init, signal: controller.signal });
+        } catch (e: any) {
+          lastErr = e?.name === "AbortError" ? "Request timed out." : e?.message ?? "Failed to fetch";
+          log(`Export attempt failed: ${lastErr}`);
+          continue;
+        }
+
+        if (!res.ok) {
+          const data = await safeJson(res);
+          lastErr = `API error ${res.status}: ${typeof data === "string" ? data : JSON.stringify(data)}`;
+          log(`Export attempt failed: ${lastErr}`);
+          continue;
+        }
+
+        const ct = (res.headers.get("content-type") || "").toLowerCase();
+        if (ct.includes("application/json")) {
+          const data = await safeJson(res);
+          lastErr = `Unexpected JSON response: ${typeof data === "string" ? data : JSON.stringify(data)}`;
+          log(`Export attempt failed: ${lastErr}`);
+          continue;
+        }
+
+        const blob = await res.blob();
+        const dl = document.createElement("a");
+        dl.href = URL.createObjectURL(blob);
+        dl.download = "rnaseq_export.zip";
+        dl.click();
+        URL.revokeObjectURL(dl.href);
+
+        setExportStatus("done");
+        log("Export downloaded.");
         return;
       }
 
-      const blob = await res.blob();
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "rnaseq_export.zip";
-      a.click();
-      URL.revokeObjectURL(a.href);
-
-      setExportStatus("done");
-      log("Export downloaded.");
-    } catch (e: any) {
       setExportStatus("error");
-      log(`Export failed: ${e?.message ?? "Network error."}`);
+      log(`Export failed: ${lastErr ?? "Failed to fetch"}`);
+    } finally {
+      window.clearTimeout(t);
     }
   }
 
