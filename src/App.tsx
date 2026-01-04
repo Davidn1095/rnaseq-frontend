@@ -1,1216 +1,842 @@
-import { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
-function detectDelimiter(firstLine: string) {
-  if (firstLine.includes("\t") && !firstLine.includes(",")) return "\t";
-  return ",";
-}
+/**
+ * RNA-seq Pipeline UI (frontend-only shell)
+ * - No external UI libraries
+ * - Works on a fresh Vite + React + TS template
+ * - Can optionally call a backend if you set an API base URL in the UI
+ */
 
-function safeNumber(x: unknown) {
-  const v = Number(x);
-  return Number.isFinite(v) ? v : 0;
-}
+type PhaseKey =
+  | "upload"
+  | "quality_control"
+  | "normalization"
+  | "batch_correction"
+  | "clustering"
+  | "export";
 
-type Counts = {
-  genes: string[];
-  cells: string[];
-  X: number[][]; // genes x cells
+type Phase = {
+  key: PhaseKey;
+  title: string;
+  subtitle: string;
 };
 
-function computeStats(genes: string[], cells: string[], X: number[][]) {
-  const nGenes = genes.length;
-  const nCells = cells.length;
+type StepStatus = "idle" | "running" | "done" | "error";
 
-  const mitoIdx: number[] = [];
-  for (let i = 0; i < nGenes; i += 1) {
-    const g = String(genes[i] ?? "");
-    if (g.toUpperCase().startsWith("MT-")) mitoIdx.push(i);
-  }
-
-  const libSize = new Array(nCells).fill(0);
-  const detected = new Array(nCells).fill(0);
-  const mitoCounts = new Array(nCells).fill(0);
-
-  for (let i = 0; i < nGenes; i += 1) {
-    const row = X[i];
-    for (let j = 0; j < nCells; j += 1) {
-      const c = row[j] ?? 0;
-      libSize[j] += c;
-      if (c > 0) detected[j] += 1;
-    }
-  }
-
-  for (let k = 0; k < mitoIdx.length; k += 1) {
-    const i = mitoIdx[k];
-    const row = X[i];
-    for (let j = 0; j < nCells; j += 1) mitoCounts[j] += row[j] ?? 0;
-  }
-
-  const mitoPct = mitoCounts.map((m, j) => (libSize[j] > 0 ? (100 * m) / libSize[j] : 0));
-
-  const summary = (arr: number[]) => {
-    if (!arr.length) return { min: 0, med: 0, max: 0 };
-    const xs = [...arr].sort((a, b) => a - b);
-    const mid = Math.floor(xs.length / 2);
-    const med = xs.length % 2 === 0 ? (xs[mid - 1] + xs[mid]) / 2 : xs[mid];
-    return { min: xs[0], med, max: xs[xs.length - 1] };
-  };
-
-  return {
-    nGenes,
-    nCells,
-    nMitoGenes: mitoIdx.length,
-    libSize,
-    detected,
-    mitoPct,
-    libSummary: summary(libSize),
-    detectedSummary: summary(detected),
-    mitoPctSummary: summary(mitoPct),
-  };
-}
-
-function summarizeMatrix(X: number[][], maxSample = 200000) {
-  const sample: number[] = [];
-  let seen = 0;
-
-  for (let i = 0; i < X.length; i += 1) {
-    const row = X[i];
-    for (let j = 0; j < row.length; j += 1) {
-      const v = row[j];
-      if (!Number.isFinite(v)) continue;
-
-      seen += 1;
-      if (sample.length < maxSample) {
-        sample.push(v);
-      } else {
-        const r = Math.floor(Math.random() * seen);
-        if (r < maxSample) sample[r] = v;
-      }
-    }
-  }
-
-  if (sample.length === 0) return { min: 0, med: 0, max: 0, sampled: false, n: 0 };
-
-  const xs = [...sample].sort((a, b) => a - b);
-  const mid = Math.floor(xs.length / 2);
-  const med = xs.length % 2 === 0 ? (xs[mid - 1] + xs[mid]) / 2 : xs[mid];
-
-  return {
-    min: xs[0],
-    med,
-    max: xs[xs.length - 1],
-    sampled: seen > xs.length,
-    n: seen,
-  };
-}
-
-function zscoreRows(X: number[][]) {
-  const out = new Array(X.length);
-
-  for (let i = 0; i < X.length; i += 1) {
-    const row = X[i];
-    const n = row.length;
-
-    let mean = 0;
-    for (let j = 0; j < n; j += 1) mean += row[j];
-    mean /= Math.max(1, n);
-
-    let v = 0;
-    for (let j = 0; j < n; j += 1) {
-      const d = row[j] - mean;
-      v += d * d;
-    }
-    const sd = Math.sqrt(v / Math.max(1, n - 1)) || 1;
-
-    const z = new Array(n);
-    for (let j = 0; j < n; j += 1) z[j] = (row[j] - mean) / sd;
-    out[i] = z;
-  }
-
-  return out as number[][];
-}
-
-function normalizeCounts(counts: Counts, method: string) {
-  const { genes, cells, X } = counts;
-  const nGenes = genes.length;
-  const nCells = cells.length;
-
-  const libSize = new Array(nCells).fill(0);
-  for (let i = 0; i < nGenes; i += 1) {
-    const row = X[i];
-    for (let j = 0; j < nCells; j += 1) libSize[j] += row[j] ?? 0;
-  }
-
-  const scaleFactor = method === "CPM" ? 1e6 : 1e4;
-
-  const base = new Array(nGenes);
-  for (let i = 0; i < nGenes; i += 1) {
-    const row = X[i];
-    const outRow = new Array(nCells);
-    for (let j = 0; j < nCells; j += 1) {
-      const denom = libSize[j] || 0;
-      const v = denom > 0 ? ((row[j] ?? 0) / denom) * scaleFactor : 0;
-      outRow[j] = Math.log1p(v);
-    }
-    base[i] = outRow;
-  }
-
-  let Xnorm = base as number[][];
-  let details = "";
-
-  if (method === "LogNormalize") {
-    details = "LogNormalize, log1p counts divided by library size times 1e4";
-  } else if (method === "CPM") {
-    details = "CPM, log1p counts divided by library size times 1e6";
-  } else if (method === "SCTransform") {
-    Xnorm = zscoreRows(base as number[][]);
-    details = "SCTransform approximation, log1p normalize then gene wise z score";
-  } else {
-    throw new Error("Unknown normalization method");
-  }
-
-  const summary = summarizeMatrix(Xnorm);
-  return { Xnorm, summary, details, scaleFactor };
-}
-
-function parseDelimitedMatrix(text: string) {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  if (lines.length < 2) throw new Error("File is empty or has no data rows");
-
-  const delimiter = detectDelimiter(lines[0]);
-  const header = lines[0].split(delimiter).map((x) => x.trim());
-  if (header.length < 3) throw new Error("Expected at least 2 cells in columns");
-
-  const geneCol = header[0] || "gene_id";
-  const cells = header.slice(1);
-
-  if (delimiter === "," && lines[0].includes("\t")) throw new Error("Mixed delimiter header should fail fast");
-  if (delimiter === "\t" && lines[0].includes(",")) throw new Error("Mixed delimiter header should fail fast");
-
-  const genes: string[] = [];
-  const X: number[][] = [];
-
-  for (let i = 1; i < lines.length; i += 1) {
-    const parts = lines[i].split(delimiter);
-    if (!parts.length) continue;
-    const gene = (parts[0] ?? "").trim();
-    if (!gene) continue;
-
-    genes.push(gene);
-    const row = new Array(cells.length);
-    for (let j = 0; j < cells.length; j += 1) row[j] = safeNumber(parts[j + 1]);
-    X.push(row);
-  }
-
-  if (genes.length === 0) throw new Error("No gene rows parsed");
-
-  return { geneCol, genes, cells, X };
-}
-
-function parseDelimitedTable(text: string) {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  if (lines.length < 2) throw new Error("File is empty or has no data rows");
-
-  const delimiter = detectDelimiter(lines[0]);
-  const header = lines[0].split(delimiter).map((x) => x.trim());
-  if (header.length < 2) throw new Error("Expected at least 2 columns in metadata");
-
-  const rows: string[][] = [];
-  for (let i = 1; i < lines.length; i += 1) {
-    const parts = lines[i].split(delimiter).map((x) => x.trim());
-    if (parts.every((x) => x.length === 0)) continue;
-    const row = new Array(header.length).fill("");
-    for (let j = 0; j < header.length; j += 1) row[j] = parts[j] ?? "";
-    rows.push(row);
-  }
-
-  if (rows.length === 0) throw new Error("No metadata rows parsed");
-
-  return { header, rows, delimiter };
-}
-
-function findColumnIndex(header: string[], candidates: string[]) {
-  const lower = header.map((h) => String(h).trim().toLowerCase());
-  for (let i = 0; i < candidates.length; i += 1) {
-    const c = candidates[i].toLowerCase();
-    const idx = lower.indexOf(c);
-    if (idx >= 0) return idx;
-  }
-  return -1;
-}
-
-type MetaTable = {
-  header: string[];
-  rows: string[][];
-  delimiter: string;
-  idColIdx: number;
-  batchColIdx: number;
+type RunResult = {
+  ok: boolean;
+  message: string;
+  payload?: unknown;
 };
 
-function parseMetadata(text: string): MetaTable {
-  const t = parseDelimitedTable(text);
-  const idColFound = findColumnIndex(t.header, ["cell", "cell_id", "barcode", "barcodes", "id", "cellid"]);
-  const idColIdx = idColFound >= 0 ? idColFound : 0;
+const PHASES: Phase[] = [
+  {
+    key: "upload",
+    title: "Upload",
+    subtitle: "Load counts matrix, CSV or TSV",
+  },
+  {
+    key: "quality_control",
+    title: "Quality control",
+    subtitle: "Basic checks, missing values, filtering",
+  },
+  {
+    key: "normalization",
+    title: "Normalization",
+    subtitle: "Log-normalization, scaling, or SCTransform-like",
+  },
+  {
+    key: "batch_correction",
+    title: "Harmony batch correction",
+    subtitle: "Remove batch effects using Harmony",
+  },
+  {
+    key: "clustering",
+    title: "Clustering",
+    subtitle: "Reduce dimensions, cluster, annotate",
+  },
+  {
+    key: "export",
+    title: "Export",
+    subtitle: "Download results and reports",
+  },
+];
 
-  const batchCandidates = ["batch", "sample", "donor", "orig.ident", "library", "patient", "subject"];
-  let batchColIdx = findColumnIndex(t.header, batchCandidates);
-  if (batchColIdx < 0) batchColIdx = Math.min(1, t.header.length - 1);
-
-  return { ...t, idColIdx, batchColIdx };
+function clamp(n: number, lo: number, hi: number) {
+  return Math.max(lo, Math.min(hi, n));
 }
 
-function buildBatchMap(meta: MetaTable) {
-  const idToBatch: Record<string, string> = Object.create(null);
-  for (let i = 0; i < meta.rows.length; i += 1) {
-    const row = meta.rows[i];
-    const id = String(row[meta.idColIdx] ?? "").trim();
-    const batch = String(row[meta.batchColIdx] ?? "").trim();
-    if (!id) continue;
-    idToBatch[id] = batch || "batch1";
+function prettyBytes(n: number) {
+  const units = ["B", "KB", "MB", "GB"];
+  let v = n;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i += 1;
   }
-  return idToBatch;
+  return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-function computeGeneVariances(Xnorm: number[][], genes: string[], opts?: { excludeMito?: boolean }) {
-  const excludeMito = opts?.excludeMito ?? true;
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
-  const nGenes = genes.length;
-  const nCells = Xnorm[0]?.length ?? 0;
+async function safeJson(res: Response) {
+  const text = await res.text().catch(() => "");
+  try {
+    return text ? JSON.parse(text) : null;
+  } catch {
+    return { raw: text };
+  }
+}
 
-  const vars = new Array(nGenes);
+/**
+ * Optional backend calling strategy
+ * - If apiBase is empty, we simulate a run and return ok
+ * - If apiBase is set, we POST to `${apiBase}${path}` with JSON by default
+ * - For upload-like calls, use FormData
+ */
+async function runWithBackend(opts: {
+  apiBase: string;
+  path: string;
+  method?: "GET" | "POST";
+  json?: any;
+  form?: FormData;
+  timeoutMs?: number;
+}): Promise<RunResult> {
+  const { apiBase, path, method = "POST", json, form, timeoutMs = 120000 } = opts;
 
-  for (let i = 0; i < nGenes; i += 1) {
-    const g = String(genes[i] ?? "");
-    if (excludeMito && g.toUpperCase().startsWith("MT-")) {
-      vars[i] = -Infinity;
-      continue;
+  if (!apiBase.trim()) {
+    // Simulated run for UI-only usage
+    await sleep(600 + Math.random() * 900);
+    return { ok: true, message: "Completed (simulated). No API base URL set." };
+  }
+
+  const url = `${apiBase.replace(/\/+$/, "")}${path.startsWith("/") ? "" : "/"}${path}`;
+
+  const controller = new AbortController();
+  const t = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: form ? undefined : { "Content-Type": "application/json" },
+      body: form ? form : json ? JSON.stringify(json) : undefined,
+      signal: controller.signal,
+    });
+
+    const data = await safeJson(res);
+    if (!res.ok) {
+      return {
+        ok: false,
+        message: `API error ${res.status}: ${typeof data === "string" ? data : JSON.stringify(data)}`,
+        payload: data,
+      };
     }
 
-    const row = Xnorm[i];
-    let mean = 0;
-    for (let j = 0; j < nCells; j += 1) mean += row[j] ?? 0;
-    mean /= Math.max(1, nCells);
-
-    let v = 0;
-    for (let j = 0; j < nCells; j += 1) {
-      const d = (row[j] ?? 0) - mean;
-      v += d * d;
-    }
-    vars[i] = v / Math.max(1, nCells - 1);
+    return { ok: true, message: "Completed (API).", payload: data };
+  } catch (e: any) {
+    const msg =
+      e?.name === "AbortError"
+        ? "Request timed out."
+        : e?.message
+        ? e.message
+        : "Network error.";
+    return { ok: false, message: msg };
+  } finally {
+    window.clearTimeout(t);
   }
-
-  return vars as number[];
 }
 
-function dot(a: number[], b: number[]) {
-  let s = 0;
-  for (let i = 0; i < a.length; i += 1) s += a[i] * b[i];
-  return s;
+function StatusPill({ status }: { status: StepStatus }) {
+  const label =
+    status === "idle" ? "Idle" : status === "running" ? "Running" : status === "done" ? "Done" : "Error";
+  const cls =
+    status === "idle"
+      ? "pill pill-idle"
+      : status === "running"
+      ? "pill pill-running"
+      : status === "done"
+      ? "pill pill-done"
+      : "pill pill-error";
+  return <span className={cls}>{label}</span>;
 }
 
-function norm2(v: number[]) {
-  return Math.sqrt(dot(v, v)) || 1;
-}
-
-function matVecMul(A: number[][], v: number[]) {
-  const out = new Array(A.length).fill(0);
-  for (let i = 0; i < A.length; i += 1) {
-    let s = 0;
-    const row = A[i];
-    for (let j = 0; j < v.length; j += 1) s += row[j] * v[j];
-    out[i] = s;
-  }
-  return out as number[];
-}
-
-function orthonormalize(v: number[], basis: number[][]) {
-  const out = [...v];
-  for (let i = 0; i < basis.length; i += 1) {
-    const b = basis[i];
-    const proj = dot(out, b);
-    for (let j = 0; j < out.length; j += 1) out[j] -= proj * b[j];
-  }
-  const n = norm2(out);
-  for (let j = 0; j < out.length; j += 1) out[j] /= n;
-  return out as number[];
-}
-
-function topKEigenPairsSymmetric(A: number[][], k: number, iters = 60) {
-  const p = A.length;
-  const basis: number[][] = [];
-  const eigenValues: number[] = [];
-
-  const randVec = () => {
-    const v = new Array(p);
-    for (let i = 0; i < p; i += 1) v[i] = Math.random() - 0.5;
-    const n = norm2(v);
-    for (let i = 0; i < p; i += 1) v[i] /= n;
-    return v as number[];
-  };
-
-  for (let c = 0; c < k; c += 1) {
-    let v = randVec();
-    v = orthonormalize(v, basis);
-
-    for (let t = 0; t < iters; t += 1) {
-      const Av = matVecMul(A, v);
-      v = orthonormalize(Av, basis);
-    }
-
-    const Av = matVecMul(A, v);
-    const lambda = dot(v, Av);
-
-    basis.push(v);
-    eigenValues.push(lambda);
-  }
-
-  return { eigenVectors: basis, eigenValues };
-}
-
-function pcaEmbeddingFromXnorm(
-  Xnorm: number[][],
-  genes: string[],
-  cells: string[],
-  opts?: { maxFeatures?: number; nPC?: number },
-) {
-  const nGenes = genes.length;
-  const nCells = cells.length;
-
-  const maxFeatures = Math.min(opts?.maxFeatures ?? 200, nGenes);
-  const nPC = Math.min(opts?.nPC ?? 20, maxFeatures, Math.max(1, nCells - 1));
-
-  if (nCells < 2) throw new Error("Need at least 2 cells for PCA");
-
-  const vars = computeGeneVariances(Xnorm, genes, { excludeMito: true });
-  const idx = vars
-    .map((v, i) => ({ v, i }))
-    .sort((a, b) => b.v - a.v)
-    .slice(0, maxFeatures)
-    .map((x) => x.i);
-
-  const featureGenes = idx.map((i) => genes[i]);
-
-  const D: number[][] = new Array(nCells);
-  for (let j = 0; j < nCells; j += 1) D[j] = new Array(maxFeatures).fill(0);
-
-  for (let f = 0; f < maxFeatures; f += 1) {
-    const gi = idx[f];
-    const row = Xnorm[gi];
-    let mean = 0;
-    for (let j = 0; j < nCells; j += 1) mean += row[j] ?? 0;
-    mean /= Math.max(1, nCells);
-
-    for (let j = 0; j < nCells; j += 1) D[j][f] = (row[j] ?? 0) - mean;
-  }
-
-  const C: number[][] = new Array(maxFeatures);
-  for (let a = 0; a < maxFeatures; a += 1) C[a] = new Array(maxFeatures).fill(0);
-
-  for (let a = 0; a < maxFeatures; a += 1) {
-    for (let b = a; b < maxFeatures; b += 1) {
-      let s = 0;
-      for (let j = 0; j < nCells; j += 1) s += D[j][a] * D[j][b];
-      const v = s / Math.max(1, nCells - 1);
-      C[a][b] = v;
-      C[b][a] = v;
-    }
-  }
-
-  let totalVar = 0;
-  for (let i = 0; i < maxFeatures; i += 1) totalVar += C[i][i];
-  totalVar = totalVar || 1;
-
-  const { eigenVectors, eigenValues } = topKEigenPairsSymmetric(C, nPC, 60);
-  const explained = eigenValues.map((ev) => Math.max(0, ev) / totalVar);
-
-  const Z: number[][] = new Array(nCells);
-  for (let j = 0; j < nCells; j += 1) {
-    const row = new Array(nPC).fill(0);
-    for (let c = 0; c < nPC; c += 1) {
-      const v = eigenVectors[c];
-      let s = 0;
-      for (let f = 0; f < maxFeatures; f += 1) s += D[j][f] * v[f];
-      row[c] = s;
-    }
-    Z[j] = row;
-  }
-
-  return { Z, nPC, nFeatures: maxFeatures, featureGenes, explained };
-}
-
-function meanVector(Z: number[][], idx: number[]) {
-  const n = idx.length;
-  const k = Z[0]?.length ?? 0;
-  const m = new Array(k).fill(0);
-  if (n === 0) return m;
-
-  for (let t = 0; t < n; t += 1) {
-    const r = Z[idx[t]];
-    for (let c = 0; c < k; c += 1) m[c] += r[c];
-  }
-  for (let c = 0; c < k; c += 1) m[c] /= n;
-  return m as number[];
-}
-
-function l2(a: number[], b: number[]) {
-  let s = 0;
-  for (let i = 0; i < a.length; i += 1) {
-    const d = a[i] - b[i];
-    s += d * d;
-  }
-  return Math.sqrt(s);
-}
-
-function harmonyLikeCorrection(Z: number[][], batchByCell: string[], opts?: { iters?: number; alpha?: number }) {
-  const iters = opts?.iters ?? 5;
-  const alpha = opts?.alpha ?? 0.5;
-
-  const nCells = Z.length;
-  const k = Z[0]?.length ?? 0;
-
-  const batches = Array.from(new Set(batchByCell.map((x) => String(x || "batch1")))).sort();
-  const byBatch: Record<string, number[]> = Object.fromEntries(batches.map((b) => [b, []]));
-
-  for (let i = 0; i < nCells; i += 1) {
-    const b = String(batchByCell[i] || "batch1");
-    if (!byBatch[b]) byBatch[b] = [];
-    byBatch[b].push(i);
-  }
-
-  const Zcorr = Z.map((r) => [...r]);
-
-  for (let t = 0; t < iters; t += 1) {
-    const allIdx = Array.from({ length: nCells }, (_, i) => i);
-    const globalMean = meanVector(Zcorr, allIdx);
-
-    for (let bi = 0; bi < batches.length; bi += 1) {
-      const b = batches[bi];
-      const idx = byBatch[b] ?? [];
-      if (!idx.length) continue;
-
-      const mb = meanVector(Zcorr, idx);
-      const shift = new Array(k);
-      for (let c = 0; c < k; c += 1) shift[c] = (mb[c] - globalMean[c]) * alpha;
-
-      for (let u = 0; u < idx.length; u += 1) {
-        const i = idx[u];
-        for (let c = 0; c < k; c += 1) Zcorr[i][c] -= shift[c];
-      }
-    }
-  }
-
-  const allIdx = Array.from({ length: nCells }, (_, i) => i);
-  const g0 = meanVector(Z, allIdx);
-  const g1 = meanVector(Zcorr, allIdx);
-
-  const distBefore = batches.map((b) => l2(meanVector(Z, byBatch[b] ?? []), g0));
-  const distAfter = batches.map((b) => l2(meanVector(Zcorr, byBatch[b] ?? []), g1));
-
-  const summary = (arr: number[]) => {
-    if (!arr.length) return { min: 0, med: 0, max: 0 };
-    const xs = [...arr].sort((a, b) => a - b);
-    const mid = Math.floor(xs.length / 2);
-    const med = xs.length % 2 === 0 ? (xs[mid - 1] + xs[mid]) / 2 : xs[mid];
-    return { min: xs[0], med, max: xs[xs.length - 1] };
-  };
-
-  return {
-    Zcorr,
-    batches,
-    batchSizes: batches.map((b) => (byBatch[b] ?? []).length),
-    distBefore,
-    distAfter,
-    distBeforeSummary: summary(distBefore),
-    distAfterSummary: summary(distAfter),
-    iters,
-    alpha,
-  };
+function Divider() {
+  return <div className="divider" />;
 }
 
 export default function App() {
-  const [currentPhase, setCurrentPhase] = useState(0);
-  const [data, setData] = useState({
-    uploaded: false,
-    fileName: "",
-    numGenes: 0,
-    numSamples: 0,
-    numBatches: 1,
-    qcDone: false,
-    normalized: false,
-    normMethod: "SCTransform",
-    harmonized: false,
+  const [phaseIndex, setPhaseIndex] = useState<number>(0);
+
+  const [apiBase, setApiBase] = useState<string>(() => {
+    // If you later add a Vite env var, it will auto-load.
+    // Example: VITE_API_BASE_URL=https://your-backend.run.app
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const v = (import.meta as any)?.env?.VITE_API_BASE_URL;
+    return typeof v === "string" ? v : "";
   });
 
-  const [counts, setCounts] = useState<Counts | null>(null);
-  const [stats, setStats] = useState<ReturnType<typeof computeStats> | null>(null);
-  const [qcReport, setQcReport] = useState<any>(null);
-  const [normalizedMatrix, setNormalizedMatrix] = useState<any>(null);
-  const [meta, setMeta] = useState<MetaTable | null>(null);
-  const [harmony, setHarmony] = useState<any>(null);
-  const [error, setError] = useState("");
-
-  const phases = useMemo(
-    () => [
-      { id: 0, name: "Upload" },
-      { id: 1, name: "Quality Control" },
-      { id: 2, name: "Normalization" },
-      { id: 3, name: "Batch Correction" },
-    ],
-    [],
+  const [file, setFile] = useState<File | null>(null);
+  const [fileInfo, setFileInfo] = useState<{ name: string; size: number; rows?: number; cols?: number } | null>(
+    null
   );
 
-  const stepReady = useMemo(
-    () => [true, data.uploaded, data.qcDone, data.normalized],
-    [data.uploaded, data.qcDone, data.normalized],
-  );
+  const [uploaded, setUploaded] = useState<boolean>(false);
 
-  const canGoTo = (phaseId: number) => {
-    if (phaseId <= currentPhase) return true;
-    return stepReady[phaseId];
-  };
+  const [qcStatus, setQcStatus] = useState<StepStatus>("idle");
+  const [normStatus, setNormStatus] = useState<StepStatus>("idle");
+  const [harmStatus, setHarmStatus] = useState<StepStatus>("idle");
+  const [clusStatus, setClusStatus] = useState<StepStatus>("idle");
+  const [exportStatus, setExportStatus] = useState<StepStatus>("idle");
 
-  const fmt = (x: unknown, digits = 0) => {
-    const v = Number(x);
-    if (!Number.isFinite(v)) return "0";
-    return digits === 0 ? Math.round(v).toLocaleString() : v.toFixed(digits);
-  };
+  const [logLines, setLogLines] = useState<string[]>([]);
+  const logRef = useRef<HTMLDivElement | null>(null);
 
-  const card: React.CSSProperties = {
-    background: "white",
-    border: "1px solid #e5e7eb",
-    borderRadius: 12,
-    padding: 16,
-  };
+  const canRunQC = uploaded && qcStatus !== "running";
+  const canRunNorm = qcStatus === "done" && normStatus !== "running";
+  const canRunHarmony = normStatus === "done" && harmStatus !== "running";
+  const canRunClustering = harmStatus === "done" && clusStatus !== "running";
+  const canExport = clusStatus === "done" && exportStatus !== "running";
 
-  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const currentPhase = useMemo(() => PHASES[clamp(phaseIndex, 0, PHASES.length - 1)], [phaseIndex]);
+
+  function log(line: string) {
+    setLogLines((prev) => [...prev, `${new Date().toLocaleTimeString()}  ${line}`]);
+  }
+
+  useEffect(() => {
+    if (!logRef.current) return;
+    logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [logLines]);
+
+  async function parseQuickMatrixInfo(f: File) {
+    // Lightweight heuristic: read a slice and estimate rows/cols
+    const maxBytes = 256 * 1024;
+    const blob = f.slice(0, maxBytes);
+    const text = await blob.text();
+    const lines = text.split(/\r?\n/).filter((x) => x.trim().length > 0);
+    if (lines.length === 0) return { rows: undefined, cols: undefined };
+
+    const sep = lines[0].includes("\t") ? "\t" : ",";
+    const first = lines[0].split(sep);
+    const cols = Math.max(0, first.length - 1); // assume first col is gene id
+    // estimate rows by counting lines in slice minus header
+    const rows = Math.max(0, lines.length - 1);
+
+    return { rows, cols };
+  }
+
+  async function onChooseFile(f: File | null) {
+    setFile(f);
+    setUploaded(false);
+
+    setQcStatus("idle");
+    setNormStatus("idle");
+    setHarmStatus("idle");
+    setClusStatus("idle");
+    setExportStatus("idle");
+
+    setLogLines([]);
+
+    if (!f) {
+      setFileInfo(null);
+      return;
+    }
+
+    log(`Selected file: ${f.name} (${prettyBytes(f.size)})`);
+    const meta = await parseQuickMatrixInfo(f).catch(() => ({ rows: undefined, cols: undefined }));
+    setFileInfo({ name: f.name, size: f.size, rows: meta.rows, cols: meta.cols });
+  }
+
+  async function doUpload() {
     if (!file) return;
 
-    setError("");
+    log("Uploading input…");
+    // If your backend supports upload, set apiBase and implement /upload on backend.
+    // Otherwise, we consider "uploaded" as a local UI state.
+    const form = new FormData();
+    form.append("file", file);
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const text = String(reader.result ?? "");
-        const parsed = parseDelimitedMatrix(text);
-        const st = computeStats(parsed.genes, parsed.cells, parsed.X);
-
-        setCounts({ genes: parsed.genes, cells: parsed.cells, X: parsed.X });
-        setStats(st);
-        setQcReport(null);
-        setNormalizedMatrix(null);
-        setMeta(null);
-        setHarmony(null);
-
-        setData((prev) => ({
-          ...prev,
-          uploaded: true,
-          fileName: file.name,
-          numGenes: st.nGenes,
-          numSamples: st.nCells,
-          numBatches: 1,
-          qcDone: false,
-          normalized: false,
-          harmonized: false,
-          normMethod: "SCTransform",
-        }));
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to parse file");
-        setCounts(null);
-        setStats(null);
-        setQcReport(null);
-        setNormalizedMatrix(null);
-        setMeta(null);
-        setHarmony(null);
-        setData((prev) => ({
-          ...prev,
-          uploaded: false,
-          fileName: "",
-          numGenes: 0,
-          numSamples: 0,
-          numBatches: 1,
-          qcDone: false,
-          normalized: false,
-          harmonized: false,
-          normMethod: "SCTransform",
-        }));
-      }
-    };
-    reader.onerror = () => setError("Failed to read file");
-    reader.readAsText(file);
-  };
-
-  const handleMetaUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setError("");
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const text = String(reader.result ?? "");
-        const m = parseMetadata(text);
-        setMeta(m);
-        setHarmony(null);
-
-        if (counts) {
-          const map = buildBatchMap(m);
-          const batchByCell = counts.cells.map((id) => map[id] ?? "batch1");
-          const nBatches = new Set(batchByCell).size || 1;
-          setData((prev) => ({
-            ...prev,
-            numBatches: nBatches,
-            harmonized: false,
-          }));
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to parse metadata");
-        setMeta(null);
-        setHarmony(null);
-      }
-    };
-
-    reader.onerror = () => setError("Failed to read metadata file");
-    reader.readAsText(file);
-  };
-
-  const runQC = () => {
-    if (!counts) return;
-
-    const before = computeStats(counts.genes, counts.cells, counts.X);
-
-    const minCellsPerGene = 2;
-    const minFeaturesPerCell = 200;
-
-    const geneKeep = new Array(counts.genes.length).fill(false);
-    for (let i = 0; i < counts.genes.length; i += 1) {
-      const row = counts.X[i];
-      let n = 0;
-      for (let j = 0; j < counts.cells.length; j += 1) if ((row[j] ?? 0) > 0) n += 1;
-      geneKeep[i] = n >= minCellsPerGene;
+    const res = await runWithBackend({ apiBase, path: "/upload", form });
+    if (res.ok) {
+      setUploaded(true);
+      log(res.payload ? "Upload completed with API response." : "Upload completed.");
+    } else {
+      // If no API is set, runWithBackend returns ok. If API is set, show error.
+      log(`Upload failed: ${res.message}`);
+      setUploaded(false);
     }
+  }
 
-    const genes2: string[] = [];
-    const X2: number[][] = [];
-    for (let i = 0; i < counts.genes.length; i += 1) {
-      if (!geneKeep[i]) continue;
-      genes2.push(counts.genes[i]);
-      X2.push(counts.X[i]);
+  async function doQC() {
+    if (!uploaded) return;
+    setQcStatus("running");
+    log("Quality control started…");
+
+    const res = await runWithBackend({
+      apiBase,
+      path: "/qc",
+      json: {
+        // Adjust these to match your backend later
+        min_counts_per_gene: 1,
+        min_counts_per_cell: 1,
+      },
+    });
+
+    if (res.ok) {
+      setQcStatus("done");
+      log("Quality control done.");
+      setPhaseIndex(PHASES.findIndex((p) => p.key === "normalization"));
+    } else {
+      setQcStatus("error");
+      log(`Quality control failed: ${res.message}`);
     }
+  }
 
-    const detected2 = new Array(counts.cells.length).fill(0);
-    for (let i = 0; i < X2.length; i += 1) {
-      const row = X2[i];
-      for (let j = 0; j < counts.cells.length; j += 1) if ((row[j] ?? 0) > 0) detected2[j] += 1;
+  async function doNormalization() {
+    if (qcStatus !== "done") return;
+    setNormStatus("running");
+    log("Normalization started…");
+
+    const res = await runWithBackend({
+      apiBase,
+      path: "/normalize",
+      json: {
+        method: "log1p",
+        scale: true,
+      },
+    });
+
+    if (res.ok) {
+      setNormStatus("done");
+      log("Normalization done.");
+      setPhaseIndex(PHASES.findIndex((p) => p.key === "batch_correction"));
+    } else {
+      setNormStatus("error");
+      log(`Normalization failed: ${res.message}`);
     }
+  }
 
-    const cellKeep = detected2.map((d) => d >= minFeaturesPerCell);
-    const cells2 = counts.cells.filter((_, j) => cellKeep[j]);
-    const X3 = X2.map((row) => row.filter((_, j) => cellKeep[j]));
+  async function doHarmony() {
+    if (normStatus !== "done") return;
+    setHarmStatus("running");
+    log("Harmony batch correction started…");
 
-    const after = computeStats(genes2, cells2, X3);
+    const res = await runWithBackend({
+      apiBase,
+      path: "/harmony",
+      json: {
+        batch_key: "batch",
+        theta: 2,
+        max_iter_harmony: 10,
+      },
+    });
 
-    setCounts({ genes: genes2, cells: cells2, X: X3 });
-    setStats(after);
-    setQcReport({ before, after });
-    setNormalizedMatrix(null);
-    setHarmony(null);
-
-    setData((prev) => ({
-      ...prev,
-      qcDone: true,
-      numGenes: after.nGenes,
-      numSamples: after.nCells,
-      normalized: false,
-      harmonized: false,
-    }));
-  };
-
-  const runNorm = (method: string) => {
-    if (!counts) return;
-
-    setError("");
-
-    try {
-      const out = normalizeCounts(counts, method);
-      setNormalizedMatrix({ method, ...out });
-      setHarmony(null);
-
-      setData((prev) => ({
-        ...prev,
-        normalized: true,
-        normMethod: method,
-        harmonized: false,
-      }));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Normalization failed");
-      setNormalizedMatrix(null);
-      setHarmony(null);
-      setData((prev) => ({ ...prev, normalized: false }));
+    if (res.ok) {
+      setHarmStatus("done");
+      log("Harmony batch correction done.");
+      setPhaseIndex(PHASES.findIndex((p) => p.key === "clustering"));
+    } else {
+      setHarmStatus("error");
+      log(`Harmony failed: ${res.message}`);
     }
-  };
+  }
 
-  const runHarmony = () => {
-    if (!counts || !normalizedMatrix) return;
+  async function doClustering() {
+    if (harmStatus !== "done") return;
+    setClusStatus("running");
+    log("Clustering started…");
 
-    setError("");
+    const res = await runWithBackend({
+      apiBase,
+      path: "/cluster",
+      json: {
+        method: "leiden",
+        n_pcs: 30,
+        resolution: 0.8,
+        embedding: "umap",
+      },
+    });
 
-    try {
-      const map = meta ? buildBatchMap(meta) : Object.create(null);
-      const batchByCell = counts.cells.map((id) => map[id] ?? "batch1");
-      const nBatches = new Set(batchByCell).size || 1;
-
-      const pca = pcaEmbeddingFromXnorm(normalizedMatrix.Xnorm, counts.genes, counts.cells, {
-        maxFeatures: 200,
-        nPC: 20,
-      });
-
-      const corrected = harmonyLikeCorrection(pca.Z, batchByCell, { iters: 5, alpha: 0.5 });
-
-      setHarmony({
-        ...pca,
-        ...corrected,
-        batchByCell,
-      });
-
-      setData((prev) => ({
-        ...prev,
-        numBatches: nBatches,
-        harmonized: true,
-      }));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Batch correction failed");
-      setHarmony(null);
-      setData((prev) => ({ ...prev, harmonized: false }));
+    if (res.ok) {
+      setClusStatus("done");
+      log("Clustering done.");
+      setPhaseIndex(PHASES.findIndex((p) => p.key === "export"));
+    } else {
+      setClusStatus("error");
+      log(`Clustering failed: ${res.message}`);
     }
-  };
+  }
 
-  const goPrev = () => setCurrentPhase((p) => Math.max(0, p - 1));
-  const goNext = () => {
-    const next = Math.min(phases.length - 1, currentPhase + 1);
-    if (canGoTo(next)) setCurrentPhase(next);
-  };
+  async function doExport() {
+    if (clusStatus !== "done") return;
+    setExportStatus("running");
+    log("Preparing export…");
 
-  const nextDisabled = currentPhase === phases.length - 1 || !canGoTo(Math.min(phases.length - 1, currentPhase + 1));
+    const res = await runWithBackend({
+      apiBase,
+      path: "/export",
+      method: "POST",
+      json: { format: "zip" },
+    });
 
-  const renderPhase = () => {
-    if (currentPhase === 0) {
-      return (
-        <div style={{ display: "grid", gap: 12 }}>
-          <div style={card}>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>Step 1, upload count matrix</div>
-            <div style={{ marginTop: 6, color: "#4b5563" }}>
-              CSV or TSV, genes as rows, cells as columns, first column is gene identifiers
-            </div>
-
-            <div style={{ marginTop: 12 }}>
-              <input type="file" accept=".csv,.tsv,.txt" onChange={handleUpload} />
-            </div>
-
-            {data.uploaded && stats && (
-              <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-                <div>
-                  <strong>File</strong>: {data.fileName}
-                </div>
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  <div style={{ ...card, padding: 12, minWidth: 160 }}>
-                    <div style={{ color: "#6b7280", fontSize: 12 }}>Genes</div>
-                    <div style={{ fontSize: 22, fontWeight: 800 }}>{fmt(stats.nGenes)}</div>
-                  </div>
-                  <div style={{ ...card, padding: 12, minWidth: 160 }}>
-                    <div style={{ color: "#6b7280", fontSize: 12 }}>Cells</div>
-                    <div style={{ fontSize: 22, fontWeight: 800 }}>{fmt(stats.nCells)}</div>
-                  </div>
-                  <div style={{ ...card, padding: 12, minWidth: 160 }}>
-                    <div style={{ color: "#6b7280", fontSize: 12 }}>Mito genes detected</div>
-                    <div style={{ fontSize: 22, fontWeight: 800 }}>{fmt(stats.nMitoGenes)}</div>
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  <div style={{ ...card, padding: 12, minWidth: 240 }}>
-                    <div style={{ color: "#6b7280", fontSize: 12 }}>Library size, min · median · max</div>
-                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
-                      {fmt(stats.libSummary.min)} · {fmt(stats.libSummary.med)} · {fmt(stats.libSummary.max)}
-                    </div>
-                  </div>
-                  <div style={{ ...card, padding: 12, minWidth: 240 }}>
-                    <div style={{ color: "#6b7280", fontSize: 12 }}>Detected genes, min · median · max</div>
-                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
-                      {fmt(stats.detectedSummary.min)} · {fmt(stats.detectedSummary.med)} · {fmt(stats.detectedSummary.max)}
-                    </div>
-                  </div>
-                  <div style={{ ...card, padding: 12, minWidth: 240 }}>
-                    <div style={{ color: "#6b7280", fontSize: 12 }}>Mito percent, min · median · max</div>
-                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
-                      {fmt(stats.mitoPctSummary.min, 2)} · {fmt(stats.mitoPctSummary.med, 2)} ·{" "}
-                      {fmt(stats.mitoPctSummary.max, 2)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {error && (
-            <div style={{ ...card, borderColor: "#fecaca", background: "#fff1f2" }}>
-              <strong style={{ color: "#991b1b" }}>Error</strong>
-              <div style={{ color: "#991b1b", marginTop: 4 }}>{error}</div>
-            </div>
-          )}
-        </div>
+    if (!apiBase.trim()) {
+      // UI-only: create a small demo file
+      await sleep(500);
+      const content = JSON.stringify(
+        {
+          message: "Demo export. Set API base URL to download real results.",
+          file: fileInfo?.name ?? null,
+          steps: {
+            quality_control: qcStatus,
+            normalization: normStatus,
+            harmony: harmStatus,
+            clustering: clusStatus,
+          },
+        },
+        null,
+        2
       );
+      const blob = new Blob([content], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "rnaseq_pipeline_demo_export.json";
+      a.click();
+      URL.revokeObjectURL(a.href);
+
+      setExportStatus("done");
+      log("Export downloaded (demo).");
+      return;
     }
 
-    if (currentPhase === 1) {
-      return (
-        <div style={{ display: "grid", gap: 12 }}>
-          <div style={card}>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>Step 2, quality control</div>
-            <div style={{ marginTop: 6, color: "#4b5563" }}>
-              Gene filter, expressed in at least 2 cells. Cell filter, at least 200 detected genes.
-            </div>
-
-            <button
-              onClick={runQC}
-              disabled={!data.uploaded}
-              style={{
-                marginTop: 12,
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: "1px solid #e5e7eb",
-                background: data.uploaded ? "#111827" : "#9ca3af",
-                color: "white",
-                cursor: data.uploaded ? "pointer" : "not-allowed",
-                fontWeight: 700,
-              }}
-            >
-              Apply QC
-            </button>
-
-            {data.qcDone && qcReport && (
-              <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                <div>
-                  <strong>QC complete</strong>
-                </div>
-                <div style={{ color: "#374151" }}>
-                  Genes {fmt(qcReport.before.nGenes)} → {fmt(qcReport.after.nGenes)} · Cells {fmt(qcReport.before.nCells)} →
-                  {fmt(qcReport.after.nCells)}
-                </div>
-
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  <div style={{ ...card, padding: 12, minWidth: 220 }}>
-                    <div style={{ color: "#6b7280", fontSize: 12 }}>Library size median</div>
-                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
-                      {fmt(qcReport.after.libSummary.med)}
-                    </div>
-                  </div>
-                  <div style={{ ...card, padding: 12, minWidth: 220 }}>
-                    <div style={{ color: "#6b7280", fontSize: 12 }}>Detected genes median</div>
-                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
-                      {fmt(qcReport.after.detectedSummary.med)}
-                    </div>
-                  </div>
-                  <div style={{ ...card, padding: 12, minWidth: 220 }}>
-                    <div style={{ color: "#6b7280", fontSize: 12 }}>Mito percent median</div>
-                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
-                      {fmt(qcReport.after.mitoPctSummary.med, 2)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {error && (
-            <div style={{ ...card, borderColor: "#fecaca", background: "#fff1f2" }}>
-              <strong style={{ color: "#991b1b" }}>Error</strong>
-              <div style={{ color: "#991b1b", marginTop: 4 }}>{error}</div>
-            </div>
-          )}
-        </div>
-      );
+    if (res.ok) {
+      setExportStatus("done");
+      log("Export requested. If your backend returns a URL, implement a download step here.");
+      // If your backend returns a signed URL or a file, handle it in this section.
+    } else {
+      setExportStatus("error");
+      log(`Export failed: ${res.message}`);
     }
+  }
 
-    if (currentPhase === 2) {
-      return (
-        <div style={{ display: "grid", gap: 12 }}>
-          <div style={card}>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>Step 3, normalization</div>
-            <div style={{ marginTop: 6, color: "#4b5563" }}>
-              Choose a method. This demo normalizes in the browser and keeps the transformed matrix for later steps.
-            </div>
-
-            <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-              {[
-                { id: "SCTransform", label: "SCTransform" },
-                { id: "LogNormalize", label: "LogNormalize" },
-                { id: "CPM", label: "CPM" },
-              ].map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => runNorm(m.id)}
-                  disabled={!data.qcDone}
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    border: "1px solid #e5e7eb",
-                    background: !data.qcDone ? "#f3f4f6" : data.normMethod === m.id ? "#111827" : "white",
-                    color: !data.qcDone ? "#9ca3af" : data.normMethod === m.id ? "white" : "#111827",
-                    cursor: data.qcDone ? "pointer" : "not-allowed",
-                    fontWeight: 700,
-                  }}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
-
-            {data.normalized && normalizedMatrix && (
-              <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                <div>
-                  <strong>Applied</strong>: {data.normMethod}
-                </div>
-                <div style={{ color: "#4b5563" }}>{normalizedMatrix.details}</div>
-
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  <div style={{ ...card, padding: 12, minWidth: 220 }}>
-                    <div style={{ color: "#6b7280", fontSize: 12 }}>Value min</div>
-                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
-                      {fmt(normalizedMatrix.summary.min, 4)}
-                    </div>
-                  </div>
-                  <div style={{ ...card, padding: 12, minWidth: 220 }}>
-                    <div style={{ color: "#6b7280", fontSize: 12 }}>Value median</div>
-                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
-                      {fmt(normalizedMatrix.summary.med, 4)}
-                    </div>
-                  </div>
-                  <div style={{ ...card, padding: 12, minWidth: 220 }}>
-                    <div style={{ color: "#6b7280", fontSize: 12 }}>Value max</div>
-                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
-                      {fmt(normalizedMatrix.summary.max, 4)}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ color: "#6b7280", fontSize: 12 }}>
-                  Summary computed on {normalizedMatrix.summary.sampled ? "a sample" : "all values"}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {error && (
-            <div style={{ ...card, borderColor: "#fecaca", background: "#fff1f2" }}>
-              <strong style={{ color: "#991b1b" }}>Error</strong>
-              <div style={{ color: "#991b1b", marginTop: 4 }}>{error}</div>
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    return (
-      <div style={{ display: "grid", gap: 12 }}>
-        <div style={card}>
-          <div style={{ fontSize: 18, fontWeight: 700 }}>Step 4, batch correction</div>
-          <div style={{ marginTop: 6, color: "#4b5563" }}>
-            Upload optional metadata mapping cell id to batch. Example header: cell,batch
-          </div>
-
-          <div style={{ marginTop: 12 }}>
-            <input type="file" accept=".csv,.tsv,.txt" onChange={handleMetaUpload} />
-          </div>
-
-          {meta && (
-            <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-              <div>
-                <strong>Columns</strong>: {meta.header.join(", ")}
-              </div>
-
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-                <div>
-                  <span style={{ color: "#6b7280", fontSize: 12 }}>Batch column</span>
-                  <select
-                    value={meta.batchColIdx}
-                    onChange={(ev) => {
-                      const idx = Number(ev.target.value);
-                      if (!Number.isFinite(idx)) return;
-                      setMeta((prev) => (prev ? { ...prev, batchColIdx: idx } : prev));
-                      setHarmony(null);
-
-                      if (counts && meta) {
-                        const map = buildBatchMap({ ...meta, batchColIdx: idx });
-                        const batchByCell = counts.cells.map((id) => map[id] ?? "batch1");
-                        const nBatches = new Set(batchByCell).size || 1;
-                        setData((p) => ({ ...p, numBatches: nBatches, harmonized: false }));
-                      }
-                    }}
-                    style={{ marginLeft: 8, padding: "6px 8px", borderRadius: 8, border: "1px solid #e5e7eb" }}
-                  >
-                    {meta.header.map((h, i) => (
-                      <option key={h + String(i)} value={i}>
-                        {h}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div style={{ color: "#6b7280", fontSize: 12 }}>Rows: {fmt(meta.rows.length)}</div>
-              </div>
-            </div>
-          )}
-
-          <div style={{ marginTop: 12, display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <div style={{ ...card, padding: 12, minWidth: 220 }}>
-              <div style={{ color: "#6b7280", fontSize: 12 }}>Detected batches</div>
-              <div style={{ fontSize: 22, fontWeight: 800 }}>{fmt(data.numBatches)}</div>
-              <div style={{ color: "#6b7280", fontSize: 12, marginTop: 4 }}>
-                If no metadata is uploaded, all cells are treated as one batch
-              </div>
-            </div>
-          </div>
-
-          <button
-            onClick={runHarmony}
-            disabled={!data.normalized}
-            style={{
-              marginTop: 12,
-              padding: "10px 12px",
-              borderRadius: 10,
-              border: "1px solid #e5e7eb",
-              background: data.normalized ? "#111827" : "#9ca3af",
-              color: "white",
-              cursor: data.normalized ? "pointer" : "not-allowed",
-              fontWeight: 700,
-            }}
-          >
-            Run Harmony style correction in PC space
-          </button>
-
-          {data.harmonized && harmony && (
-            <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-              <div>
-                <strong>Batch correction complete</strong>
-              </div>
-              <div style={{ color: "#374151" }}>
-                PCA: {fmt(harmony.nFeatures)} genes → {fmt(harmony.nPC)} PCs · Iterations: {fmt(harmony.iters)} · Alpha:{" "}
-                {fmt(harmony.alpha, 2)}
-              </div>
-
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                <div style={{ ...card, padding: 12, minWidth: 260 }}>
-                  <div style={{ color: "#6b7280", fontSize: 12 }}>Batch centroid distance, median</div>
-                  <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
-                    {fmt(harmony.distBeforeSummary.med, 4)} → {fmt(harmony.distAfterSummary.med, 4)}
-                  </div>
-                </div>
-                <div style={{ ...card, padding: 12, minWidth: 260 }}>
-                  <div style={{ color: "#6b7280", fontSize: 12 }}>Batch sizes</div>
-                  <div style={{ color: "#374151" }}>
-                    {harmony.batches.map((b: string, i: number) => `${b}: ${harmony.batchSizes[i]}`).join(" · ")}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ ...card, padding: 12 }}>
-                <div style={{ color: "#6b7280", fontSize: 12 }}>Explained variance, first 5 PCs</div>
-                <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
-                  {harmony.explained
-                    .slice(0, 5)
-                    .map((x: number) => `${(x * 100).toFixed(1)}%`)
-                    .join(" · ")}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {error && (
-          <div style={{ ...card, borderColor: "#fecaca", background: "#fff1f2" }}>
-            <strong style={{ color: "#991b1b" }}>Error</strong>
-            <div style={{ color: "#991b1b", marginTop: 4 }}>{error}</div>
-          </div>
-        )}
-      </div>
-    );
-  };
+  function resetAll() {
+    setPhaseIndex(0);
+    setFile(null);
+    setFileInfo(null);
+    setUploaded(false);
+    setQcStatus("idle");
+    setNormStatus("idle");
+    setHarmStatus("idle");
+    setClusStatus("idle");
+    setExportStatus("idle");
+    setLogLines([]);
+  }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f3f4f6", padding: 18 }}>
-      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-        <div style={{ ...card, padding: 18 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <div>
-              <div style={{ fontSize: 22, fontWeight: 900 }}>Single cell RNA seq pipeline demo</div>
-              <div style={{ color: "#6b7280", marginTop: 4 }}>Upload, QC, normalize, Harmony style correction in PC space</div>
-            </div>
+    <div className="page">
+      <style>{`
+        :root {
+          color-scheme: dark;
+        }
 
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {phases.map((p) => {
-                const disabled = !canGoTo(p.id);
-                const active = currentPhase === p.id;
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => !disabled && setCurrentPhase(p.id)}
-                    style={{
-                      padding: "8px 10px",
-                      borderRadius: 10,
-                      border: "1px solid #e5e7eb",
-                      background: active ? "#111827" : "white",
-                      color: active ? "white" : disabled ? "#9ca3af" : "#111827",
-                      cursor: disabled ? "not-allowed" : "pointer",
-                      fontWeight: 800,
-                    }}
-                    title={disabled ? "Complete previous steps to unlock" : p.name}
-                  >
-                    {p.name}
-                  </button>
-                );
-              })}
+        .page {
+          min-height: 100vh;
+          background: radial-gradient(1200px 700px at 20% 0%, rgba(125, 211, 252, 0.12), transparent 60%),
+                      radial-gradient(900px 600px at 80% 20%, rgba(167, 139, 250, 0.12), transparent 55%),
+                      #0b0f19;
+          color: rgba(255,255,255,0.92);
+          font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+          padding: 18px;
+        }
+
+        .shell {
+          max-width: 1100px;
+          margin: 0 auto;
+          display: grid;
+          grid-template-columns: 280px 1fr;
+          gap: 14px;
+        }
+
+        .card {
+          background: rgba(255,255,255,0.06);
+          border: 1px solid rgba(255,255,255,0.10);
+          border-radius: 16px;
+          box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+          overflow: hidden;
+        }
+
+        .side {
+          padding: 14px;
+        }
+
+        .main {
+          padding: 14px;
+          display: grid;
+          grid-template-rows: auto auto 1fr;
+          gap: 12px;
+        }
+
+        .title {
+          font-size: 18px;
+          font-weight: 650;
+          letter-spacing: 0.2px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+        }
+
+        .subtitle {
+          margin-top: 4px;
+          color: rgba(255,255,255,0.70);
+          font-size: 13px;
+          line-height: 1.3;
+        }
+
+        .divider {
+          height: 1px;
+          background: rgba(255,255,255,0.10);
+          margin: 12px 0;
+        }
+
+        .phaseList {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin-top: 10px;
+        }
+
+        .phaseBtn {
+          width: 100%;
+          text-align: left;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(255,255,255,0.05);
+          padding: 10px 10px;
+          border-radius: 12px;
+          cursor: pointer;
+          transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+        }
+
+        .phaseBtn:hover {
+          transform: translateY(-1px);
+          background: rgba(255,255,255,0.07);
+          border-color: rgba(255,255,255,0.14);
+        }
+
+        .phaseBtnActive {
+          background: rgba(125, 211, 252, 0.10);
+          border-color: rgba(125, 211, 252, 0.25);
+        }
+
+        .phaseBtnTitle {
+          font-weight: 650;
+          font-size: 13px;
+        }
+
+        .phaseBtnSub {
+          margin-top: 3px;
+          font-size: 12px;
+          color: rgba(255,255,255,0.70);
+        }
+
+        .grid2 {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+        }
+
+        .field {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .label {
+          font-size: 12px;
+          color: rgba(255,255,255,0.72);
+        }
+
+        .input {
+          border: 1px solid rgba(255,255,255,0.12);
+          background: rgba(0,0,0,0.25);
+          color: rgba(255,255,255,0.92);
+          border-radius: 12px;
+          padding: 10px 10px;
+          outline: none;
+        }
+
+        .input:focus {
+          border-color: rgba(167, 139, 250, 0.35);
+          box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.12);
+        }
+
+        .row {
+          display: flex;
+          gap: 10px;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+
+        .btn {
+          border: 1px solid rgba(255,255,255,0.12);
+          background: rgba(255,255,255,0.06);
+          color: rgba(255,255,255,0.92);
+          border-radius: 12px;
+          padding: 10px 12px;
+          cursor: pointer;
+          font-weight: 650;
+          font-size: 13px;
+          transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+          user-select: none;
+        }
+
+        .btn:hover {
+          transform: translateY(-1px);
+          background: rgba(255,255,255,0.08);
+          border-color: rgba(255,255,255,0.16);
+        }
+
+        .btnPrimary {
+          background: rgba(125, 211, 252, 0.12);
+          border-color: rgba(125, 211, 252, 0.26);
+        }
+
+        .btnDanger {
+          background: rgba(248, 113, 113, 0.10);
+          border-color: rgba(248, 113, 113, 0.24);
+        }
+
+        .btn:disabled {
+          opacity: 0.45;
+          cursor: not-allowed;
+          transform: none;
+        }
+
+        .pill {
+          border-radius: 999px;
+          padding: 6px 10px;
+          font-size: 12px;
+          font-weight: 650;
+          border: 1px solid rgba(255,255,255,0.12);
+          background: rgba(255,255,255,0.06);
+        }
+
+        .pill-idle { color: rgba(255,255,255,0.72); }
+        .pill-running { color: rgba(125, 211, 252, 0.95); border-color: rgba(125, 211, 252, 0.35); background: rgba(125, 211, 252, 0.10); }
+        .pill-done { color: rgba(74, 222, 128, 0.95); border-color: rgba(74, 222, 128, 0.28); background: rgba(74, 222, 128, 0.10); }
+        .pill-error { color: rgba(248, 113, 113, 0.95); border-color: rgba(248, 113, 113, 0.28); background: rgba(248, 113, 113, 0.10); }
+
+        .log {
+          height: 220px;
+          overflow: auto;
+          padding: 10px;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+          font-size: 12px;
+          color: rgba(255,255,255,0.78);
+          background: rgba(0,0,0,0.30);
+          border: 1px solid rgba(255,255,255,0.10);
+          border-radius: 14px;
+          line-height: 1.4;
+          white-space: pre-wrap;
+        }
+
+        .hint {
+          font-size: 12px;
+          color: rgba(255,255,255,0.70);
+        }
+
+        .kpi {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+        }
+
+        .kpiBox {
+          padding: 12px;
+          border-radius: 14px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(255,255,255,0.05);
+        }
+
+        .kpiLabel {
+          font-size: 12px;
+          color: rgba(255,255,255,0.70);
+        }
+
+        .kpiValue {
+          margin-top: 6px;
+          font-size: 15px;
+          font-weight: 700;
+        }
+
+        @media (max-width: 980px) {
+          .shell {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
+
+      <div className="shell">
+        <div className="card side">
+          <div className="title">
+            <span>RNA-seq pipeline</span>
+            <button className="btn btnDanger" onClick={resetAll} type="button">
+              Reset
+            </button>
+          </div>
+          <div className="subtitle">A step-by-step UI. Set an API base URL to run real backend steps.</div>
+
+          <Divider />
+
+          <div className="field">
+            <div className="label">API base URL</div>
+            <input
+              className="input"
+              value={apiBase}
+              onChange={(e) => setApiBase(e.target.value)}
+              placeholder="https://your-backend-xxxxx.europe-west1.run.app"
+            />
+            <div className="hint">
+              If empty, actions run in simulated mode. If set, the app calls /upload, /qc, /normalize, /harmony, /cluster,
+              /export.
             </div>
           </div>
 
-          <div style={{ marginTop: 16 }}>{renderPhase()}</div>
+          <Divider />
 
-          <div style={{ marginTop: 16, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <button
-              onClick={goPrev}
-              disabled={currentPhase === 0}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: "1px solid #e5e7eb",
-                background: currentPhase === 0 ? "#f3f4f6" : "white",
-                color: currentPhase === 0 ? "#9ca3af" : "#111827",
-                cursor: currentPhase === 0 ? "not-allowed" : "pointer",
-                fontWeight: 800,
-              }}
-            >
-              Previous
-            </button>
+          <div className="phaseList">
+            {PHASES.map((p, idx) => (
+              <button
+                key={p.key}
+                className={`phaseBtn ${idx === phaseIndex ? "phaseBtnActive" : ""}`}
+                onClick={() => setPhaseIndex(idx)}
+                type="button"
+              >
+                <div className="phaseBtnTitle">{p.title}</div>
+                <div className="phaseBtnSub">{p.subtitle}</div>
+              </button>
+            ))}
+          </div>
+        </div>
 
-            <div style={{ color: "#6b7280", fontWeight: 700 }}>
-              Step {currentPhase + 1} of {phases.length}
+        <div className="card main">
+          <div>
+            <div className="title">
+              <span>{currentPhase.title}</span>
+              <span className="hint">{currentPhase.subtitle}</span>
+            </div>
+          </div>
+
+          <div className="kpi">
+            <div className="kpiBox">
+              <div className="kpiLabel">Input</div>
+              <div className="kpiValue">{fileInfo ? fileInfo.name : "No file selected"}</div>
+              <div className="hint">
+                {fileInfo ? `${prettyBytes(fileInfo.size)}${fileInfo.rows ? `, ~${fileInfo.rows} rows` : ""}${fileInfo.cols ? `, ~${fileInfo.cols} cols` : ""}` : "Select a counts matrix to begin."}
+              </div>
             </div>
 
-            <button
-              onClick={goNext}
-              disabled={nextDisabled}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: "1px solid #e5e7eb",
-                background: nextDisabled ? "#9ca3af" : "#111827",
-                color: "white",
-                cursor: nextDisabled ? "not-allowed" : "pointer",
-                fontWeight: 900,
-              }}
-            >
-              Next
-            </button>
+            <div className="kpiBox">
+              <div className="kpiLabel">Progress</div>
+              <div className="kpiValue">
+                QC <StatusPill status={qcStatus} /> &nbsp; Norm <StatusPill status={normStatus} /> &nbsp; Harmony{" "}
+                <StatusPill status={harmStatus} /> &nbsp; Cluster <StatusPill status={clusStatus} />
+              </div>
+              <div className="hint">
+                Upload {uploaded ? "done" : "pending"}.
+              </div>
+            </div>
+          </div>
+
+          <div className="grid2">
+            <div className="card" style={{ padding: 14, background: "rgba(255,255,255,0.04)" }}>
+              <div className="title" style={{ fontSize: 14 }}>
+                Actions
+              </div>
+              <div className="subtitle">Run pipeline steps in order.</div>
+
+              <Divider />
+
+              <div className="field">
+                <div className="label">Counts matrix file</div>
+                <input
+                  className="input"
+                  type="file"
+                  accept=".csv,.tsv,.txt"
+                  onChange={(e) => onChooseFile(e.target.files?.[0] ?? null)}
+                />
+              </div>
+
+              <div className="row" style={{ marginTop: 12 }}>
+                <button className="btn btnPrimary" onClick={doUpload} type="button" disabled={!file || uploaded}>
+                  {uploaded ? "Uploaded" : "Upload"}
+                </button>
+
+                <button className="btn" onClick={doQC} type="button" disabled={!canRunQC}>
+                  Quality control
+                </button>
+
+                <button className="btn" onClick={doNormalization} type="button" disabled={!canRunNorm}>
+                  Normalize
+                </button>
+
+                <button className="btn" onClick={doHarmony} type="button" disabled={!canRunHarmony}>
+                  Harmony
+                </button>
+
+                <button className="btn" onClick={doClustering} type="button" disabled={!canRunClustering}>
+                  Cluster
+                </button>
+
+                <button className="btn" onClick={doExport} type="button" disabled={!canExport}>
+                  Export
+                </button>
+              </div>
+
+              <Divider />
+
+              <div className="hint">
+                If your backend endpoints differ, update the paths in App.tsx: <code>/upload</code>, <code>/qc</code>,{" "}
+                <code>/normalize</code>, <code>/harmony</code>, <code>/cluster</code>, <code>/export</code>.
+              </div>
+            </div>
+
+            <div className="card" style={{ padding: 14, background: "rgba(255,255,255,0.04)" }}>
+              <div className="title" style={{ fontSize: 14 }}>
+                Run log
+              </div>
+              <div className="subtitle">Client-side log. Useful to debug API connectivity.</div>
+
+              <Divider />
+
+              <div ref={logRef} className="log">
+                {logLines.length === 0 ? "No events yet." : logLines.join("\n")}
+              </div>
+
+              <Divider />
+
+              <div className="row">
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(logLines.join("\n")).catch(() => undefined);
+                  }}
+                  disabled={logLines.length === 0}
+                >
+                  Copy log
+                </button>
+
+                <button className="btn" type="button" onClick={() => setLogLines([])} disabled={logLines.length === 0}>
+                  Clear log
+                </button>
+              </div>
+
+              <div className="hint" style={{ marginTop: 10 }}>
+                Tip: open DevTools Console in your browser to see network errors.
+              </div>
+            </div>
           </div>
         </div>
       </div>
