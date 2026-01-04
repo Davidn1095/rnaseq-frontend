@@ -1,19 +1,4 @@
-import React, { useMemo, useState } from "react";
-import {
-  FileUp,
-  Filter,
-  GitMerge,
-  Sliders,
-  Brain,
-  BarChart3,
-  Download,
-  Info,
-  CheckCircle,
-  Play,
-  Layers,
-  Lock,
-  AlertTriangle,
-} from "lucide-react";
+import { useMemo, useState } from "react";
 
 function detectDelimiter(firstLine: string) {
   if (firstLine.includes("\t") && !firstLine.includes(",")) return "\t";
@@ -173,12 +158,12 @@ function normalizeCounts(counts: Counts, method: string) {
   let details = "";
 
   if (method === "LogNormalize") {
-    details = "LogNormalize: log1p(counts / library_size * 1e4)";
+    details = "LogNormalize, log1p counts divided by library size times 1e4";
   } else if (method === "CPM") {
-    details = "CPM: log1p(counts / library_size * 1e6)";
+    details = "CPM, log1p counts divided by library size times 1e6";
   } else if (method === "SCTransform") {
     Xnorm = zscoreRows(base as number[][]);
-    details = "SCTransform approximation: log1p(counts / library_size * 1e4) then gene wise z score";
+    details = "SCTransform approximation, log1p normalize then gene wise z score";
   } else {
     throw new Error("Unknown normalization method");
   }
@@ -193,17 +178,13 @@ function parseDelimitedMatrix(text: string) {
 
   const delimiter = detectDelimiter(lines[0]);
   const header = lines[0].split(delimiter).map((x) => x.trim());
-  if (header.length < 3) throw new Error("Expected at least 2 samples or cells in columns");
+  if (header.length < 3) throw new Error("Expected at least 2 cells in columns");
 
   const geneCol = header[0] || "gene_id";
   const cells = header.slice(1);
 
-  if (delimiter === "," && lines[0].includes("\t")) {
-    throw new Error("Mixed delimiter header should fail fast");
-  }
-  if (delimiter === "\t" && lines[0].includes(",")) {
-    throw new Error("Mixed delimiter header should fail fast");
-  }
+  if (delimiter === "," && lines[0].includes("\t")) throw new Error("Mixed delimiter header should fail fast");
+  if (delimiter === "\t" && lines[0].includes(",")) throw new Error("Mixed delimiter header should fail fast");
 
   const genes: string[] = [];
   const X: number[][] = [];
@@ -439,7 +420,6 @@ function pcaEmbeddingFromXnorm(
   totalVar = totalVar || 1;
 
   const { eigenVectors, eigenValues } = topKEigenPairsSymmetric(C, nPC, 60);
-
   const explained = eigenValues.map((ev) => Math.max(0, ev) / totalVar);
 
   const Z: number[][] = new Array(nCells);
@@ -558,10 +538,6 @@ export default function App() {
     normalized: false,
     normMethod: "SCTransform",
     harmonized: false,
-    clustered: false,
-    model: "Random Forest",
-    trained: false,
-    metrics: null as null | Record<string, number>,
   });
 
   const [counts, setCounts] = useState<Counts | null>(null);
@@ -574,20 +550,17 @@ export default function App() {
 
   const phases = useMemo(
     () => [
-      { id: 0, name: "Upload Data", icon: FileUp },
-      { id: 1, name: "Quality Control", icon: Filter },
-      { id: 2, name: "Normalization", icon: Sliders },
-      { id: 3, name: "Batch Correction", icon: GitMerge },
-      { id: 4, name: "Clustering", icon: Layers },
-      { id: 5, name: "ML Training", icon: Brain },
-      { id: 6, name: "Results", icon: BarChart3 },
+      { id: 0, name: "Upload" },
+      { id: 1, name: "Quality Control" },
+      { id: 2, name: "Normalization" },
+      { id: 3, name: "Batch Correction" },
     ],
     [],
   );
 
   const stepReady = useMemo(
-    () => [true, data.uploaded, data.qcDone, data.normalized, data.harmonized, data.clustered, data.trained],
-    [data.uploaded, data.qcDone, data.normalized, data.harmonized, data.clustered, data.trained],
+    () => [true, data.uploaded, data.qcDone, data.normalized],
+    [data.uploaded, data.qcDone, data.normalized],
   );
 
   const canGoTo = (phaseId: number) => {
@@ -599,6 +572,13 @@ export default function App() {
     const v = Number(x);
     if (!Number.isFinite(v)) return "0";
     return digits === 0 ? Math.round(v).toLocaleString() : v.toFixed(digits);
+  };
+
+  const card: React.CSSProperties = {
+    background: "white",
+    border: "1px solid #e5e7eb",
+    borderRadius: 12,
+    padding: 16,
   };
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -631,9 +611,7 @@ export default function App() {
           qcDone: false,
           normalized: false,
           harmonized: false,
-          clustered: false,
-          trained: false,
-          metrics: null,
+          normMethod: "SCTransform",
         }));
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to parse file");
@@ -653,9 +631,7 @@ export default function App() {
           qcDone: false,
           normalized: false,
           harmonized: false,
-          clustered: false,
-          trained: false,
-          metrics: null,
+          normMethod: "SCTransform",
         }));
       }
     };
@@ -685,9 +661,6 @@ export default function App() {
             ...prev,
             numBatches: nBatches,
             harmonized: false,
-            clustered: false,
-            trained: false,
-            metrics: null,
           }));
         }
       } catch (err) {
@@ -750,9 +723,6 @@ export default function App() {
       numSamples: after.nCells,
       normalized: false,
       harmonized: false,
-      clustered: false,
-      trained: false,
-      metrics: null,
     }));
   };
 
@@ -771,9 +741,6 @@ export default function App() {
         normalized: true,
         normMethod: method,
         harmonized: false,
-        clustered: false,
-        trained: false,
-        metrics: null,
       }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Normalization failed");
@@ -810,643 +777,11 @@ export default function App() {
         ...prev,
         numBatches: nBatches,
         harmonized: true,
-        clustered: false,
-        trained: false,
-        metrics: null,
       }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Harmony step failed");
+      setError(err instanceof Error ? err.message : "Batch correction failed");
       setHarmony(null);
       setData((prev) => ({ ...prev, harmonized: false }));
-    }
-  };
-
-  const runClustering = () =>
-    setData((prev) => ({
-      ...prev,
-      clustered: true,
-      trained: false,
-      metrics: null,
-    }));
-
-  const train = () => {
-    const perf: Record<string, any> = {
-      "Random Forest": { accuracy: 0.95, precision: 0.93, recall: 0.96, f1: 0.94 },
-      "Logistic Regression": { accuracy: 0.9, precision: 0.88, recall: 0.92, f1: 0.9 },
-      SVM: { accuracy: 0.87, precision: 0.85, recall: 0.89, f1: 0.87 },
-      XGBoost: { accuracy: 0.93, precision: 0.91, recall: 0.94, f1: 0.92 },
-      "Neural Network": { accuracy: 0.91, precision: 0.89, recall: 0.93, f1: 0.91 },
-    };
-
-    setData((prev) => ({
-      ...prev,
-      trained: true,
-      metrics: perf[prev.model] ?? perf["Random Forest"],
-    }));
-  };
-
-  const renderPhase = () => {
-    switch (currentPhase) {
-      case 0:
-        return (
-          <div className="space-y-6" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ borderLeft: "4px solid #3b82f6", background: "#eff6ff", padding: 12 }}>
-              <div style={{ display: "flex", gap: 10 }}>
-                <Info size={18} />
-                <div>
-                  <div style={{ fontWeight: 700 }}>Upload a count matrix</div>
-                  <div style={{ fontSize: 13 }}>
-                    Parses CSV or TSV in the browser and computes summaries. Assumes first column is gene IDs, remaining columns are cells.
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {error && (
-              <div style={{ borderLeft: "4px solid #ef4444", background: "#fef2f2", padding: 12 }}>
-                <div style={{ display: "flex", gap: 10 }}>
-                  <AlertTriangle size={18} />
-                  <div>
-                    <div style={{ fontWeight: 700 }}>Error</div>
-                    <div style={{ fontSize: 13 }}>{error}</div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <h2 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Step 1: Upload expression matrix</h2>
-
-            <div style={{ border: "2px dashed #d1d5db", borderRadius: 12, padding: 20, textAlign: "center", background: "white" }}>
-              <label style={{ cursor: "pointer", display: "inline-block" }}>
-                <span style={{ color: "#2563eb", fontWeight: 700 }}>Upload CSV or TSV count matrix</span>
-                <input type="file" style={{ display: "none" }} accept=".csv,.tsv,.txt" onChange={handleUpload} />
-              </label>
-              <div style={{ fontSize: 13, opacity: 0.75, marginTop: 8 }}>Genes as rows, cells as columns. First column must contain gene IDs.</div>
-
-              {data.uploaded && (
-                <div style={{ marginTop: 12, color: "#16a34a", display: "flex", gap: 8, justifyContent: "center", alignItems: "center" }}>
-                  <CheckCircle size={18} />
-                  <span>{data.fileName}</span>
-                </div>
-              )}
-            </div>
-
-            {data.uploaded && stats && (
-              <div style={{ background: "white", border: "1px solid #e5e7eb", borderRadius: 12, padding: 16 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                  <div style={{ fontWeight: 700 }}>Parsed dataset</div>
-                  <div style={{ fontSize: 12, opacity: 0.7 }}>Mito genes detected: {stats.nMitoGenes}</div>
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginTop: 12 }}>
-                  <div style={{ background: "#eff6ff", borderRadius: 12, padding: 12, textAlign: "center" }}>
-                    <div style={{ fontSize: 12, opacity: 0.75 }}>Genes</div>
-                    <div style={{ fontSize: 22, fontWeight: 800 }}>{fmt(stats.nGenes)}</div>
-                  </div>
-                  <div style={{ background: "#f0fdf4", borderRadius: 12, padding: 12, textAlign: "center" }}>
-                    <div style={{ fontSize: 12, opacity: 0.75 }}>Cells</div>
-                    <div style={{ fontSize: 22, fontWeight: 800 }}>{fmt(stats.nCells)}</div>
-                  </div>
-                  <div style={{ background: "#faf5ff", borderRadius: 12, padding: 12, textAlign: "center" }}>
-                    <div style={{ fontSize: 12, opacity: 0.75 }}>Batches</div>
-                    <div style={{ fontSize: 22, fontWeight: 800 }}>{fmt(data.numBatches)}</div>
-                  </div>
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginTop: 12 }}>
-                  <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 12 }}>
-                    <div style={{ fontSize: 12, opacity: 0.75 }}>Library size, min, median, max</div>
-                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", marginTop: 6, fontSize: 13 }}>
-                      {fmt(stats.libSummary.min)} · {fmt(stats.libSummary.med)} · {fmt(stats.libSummary.max)}
-                    </div>
-                  </div>
-                  <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 12 }}>
-                    <div style={{ fontSize: 12, opacity: 0.75 }}>Detected genes, min, median, max</div>
-                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", marginTop: 6, fontSize: 13 }}>
-                      {fmt(stats.detectedSummary.min)} · {fmt(stats.detectedSummary.med)} · {fmt(stats.detectedSummary.max)}
-                    </div>
-                  </div>
-                  <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 12 }}>
-                    <div style={{ fontSize: 12, opacity: 0.75 }}>Mito percent, min, median, max</div>
-                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", marginTop: 6, fontSize: 13 }}>
-                      {fmt(stats.mitoPctSummary.min, 2)} · {fmt(stats.mitoPctSummary.med, 2)} · {fmt(stats.mitoPctSummary.max, 2)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        );
-
-      case 1:
-        return (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ borderLeft: "4px solid #22c55e", background: "#f0fdf4", padding: 12 }}>
-              <div style={{ fontWeight: 700 }}>QC filters</div>
-              <div style={{ fontSize: 13 }}>Gene filter: expressed in at least 2 cells. Cell filter: at least 200 detected genes.</div>
-            </div>
-
-            <h2 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Step 2: Quality control</h2>
-
-            <div style={{ background: "white", border: "1px solid #e5e7eb", borderRadius: 12, padding: 16 }}>
-              <div style={{ fontWeight: 700, marginBottom: 10 }}>Apply QC</div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
-                <div style={{ border: "1px solid #d1d5db", borderRadius: 12, padding: 12 }}>
-                  <div style={{ fontWeight: 700, marginBottom: 8 }}>Gene filtering</div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 13, opacity: 0.75 }}>Minimum cells per gene</span>
-                    <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", background: "#f3f4f6", padding: "2px 10px", borderRadius: 10 }}>2</span>
-                  </div>
-                </div>
-
-                <div style={{ border: "1px solid #d1d5db", borderRadius: 12, padding: 12 }}>
-                  <div style={{ fontWeight: 700, marginBottom: 8 }}>Cell filtering</div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 13, opacity: 0.75 }}>Minimum detected genes per cell</span>
-                    <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", background: "#f3f4f6", padding: "2px 10px", borderRadius: 10 }}>200</span>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                onClick={runQC}
-                disabled={!data.uploaded}
-                style={{
-                  width: "100%",
-                  marginTop: 14,
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid #16a34a",
-                  background: data.uploaded ? "#22c55e" : "#e5e7eb",
-                  color: data.uploaded ? "white" : "#6b7280",
-                  cursor: data.uploaded ? "pointer" : "not-allowed",
-                  fontWeight: 800,
-                }}
-              >
-                <Filter size={18} style={{ verticalAlign: "middle", marginRight: 8 }} />
-                Apply QC filters
-              </button>
-
-              {data.qcDone && qcReport && (
-                <div style={{ marginTop: 14, background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12, padding: 12 }}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", color: "#166534" }}>
-                    <CheckCircle size={18} />
-                    <div>
-                      <div style={{ fontWeight: 800 }}>QC complete</div>
-                      <div style={{ fontSize: 13 }}>
-                        Genes {fmt(qcReport.before.nGenes)} → {fmt(qcReport.after.nGenes)} · Cells {fmt(qcReport.before.nCells)} → {fmt(qcReport.after.nCells)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-
-      case 2:
-        return (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ borderLeft: "4px solid #a855f7", background: "#faf5ff", padding: 12 }}>
-              <div style={{ fontWeight: 700 }}>Normalization options</div>
-              <div style={{ fontSize: 13 }}>Applies normalization in the browser and stores the transformed matrix for later steps.</div>
-            </div>
-
-            <h2 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Step 3: Normalization</h2>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {[
-                { id: "SCTransform", name: "SCTransform", desc: "Variance stabilizing transformation, commonly used in Seurat.", rec: true },
-                { id: "LogNormalize", name: "Log normalization", desc: "Library size normalize then log1p.", rec: false },
-                { id: "CPM", name: "CPM", desc: "Counts per million, often with log transform.", rec: false },
-              ].map((m) => {
-                const active = data.normMethod === m.id && data.normalized;
-                return (
-                  <button
-                    key={m.id}
-                    onClick={() => runNorm(m.id)}
-                    disabled={!data.qcDone}
-                    style={{
-                      width: "100%",
-                      padding: 12,
-                      borderRadius: 12,
-                      border: `2px solid ${active ? "#a855f7" : "#d1d5db"}`,
-                      background: active ? "#faf5ff" : "white",
-                      cursor: data.qcDone ? "pointer" : "not-allowed",
-                      opacity: data.qcDone ? 1 : 0.6,
-                      textAlign: "left",
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-                      <div>
-                        <div style={{ fontWeight: 800 }}>
-                          {m.name}
-                          {m.rec && (
-                            <span style={{ marginLeft: 8, fontSize: 11, background: "#22c55e", color: "white", padding: "2px 8px", borderRadius: 999 }}>
-                              Recommended
-                            </span>
-                          )}
-                        </div>
-                        <div style={{ fontSize: 13, opacity: 0.75 }}>{m.desc}</div>
-                      </div>
-                      {active && <CheckCircle size={18} />}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {data.normalized && normalizedMatrix && (
-              <div style={{ background: "#faf5ff", border: "1px solid #e9d5ff", borderRadius: 12, padding: 12 }}>
-                <div style={{ fontSize: 13 }}>
-                  <b>Applied</b>: {data.normMethod}
-                </div>
-                <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>{normalizedMatrix.details}</div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginTop: 10 }}>
-                  <div style={{ background: "white", border: "1px solid #e5e7eb", borderRadius: 12, padding: 10 }}>
-                    <div style={{ fontSize: 12, opacity: 0.75 }}>Value min</div>
-                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13 }}>{fmt(normalizedMatrix.summary.min, 4)}</div>
-                  </div>
-                  <div style={{ background: "white", border: "1px solid #e5e7eb", borderRadius: 12, padding: 10 }}>
-                    <div style={{ fontSize: 12, opacity: 0.75 }}>Value median</div>
-                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13 }}>{fmt(normalizedMatrix.summary.med, 4)}</div>
-                  </div>
-                  <div style={{ background: "white", border: "1px solid #e5e7eb", borderRadius: 12, padding: 10 }}>
-                    <div style={{ fontSize: 12, opacity: 0.75 }}>Value max</div>
-                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13 }}>{fmt(normalizedMatrix.summary.max, 4)}</div>
-                  </div>
-                </div>
-
-                <div style={{ fontSize: 12, opacity: 0.7, marginTop: 8 }}>
-                  Summary computed on {normalizedMatrix.summary.sampled ? "a sample" : "all values"}.
-                </div>
-              </div>
-            )}
-          </div>
-        );
-
-      case 3:
-        return (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ borderLeft: "4px solid #f97316", background: "#fff7ed", padding: 12 }}>
-              <div style={{ fontWeight: 700 }}>Harmony style batch correction</div>
-              <div style={{ fontSize: 13 }}>PCA then iterative batch mean centering in PC space. Uses 200 variable genes, 20 PCs, 5 iterations, alpha 0.5.</div>
-            </div>
-
-            {error && (
-              <div style={{ borderLeft: "4px solid #ef4444", background: "#fef2f2", padding: 12 }}>
-                <div style={{ display: "flex", gap: 10 }}>
-                  <AlertTriangle size={18} />
-                  <div>
-                    <div style={{ fontWeight: 700 }}>Error</div>
-                    <div style={{ fontSize: 13 }}>{error}</div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <h2 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Step 4: Batch effect correction</h2>
-
-            <div style={{ background: "white", border: "1px solid #e5e7eb", borderRadius: 12, padding: 16 }}>
-              <div style={{ fontWeight: 800 }}>Optional metadata upload</div>
-              <div style={{ fontSize: 13, opacity: 0.75, marginTop: 4 }}>Provide cell to batch mapping. Example header: cell,batch</div>
-
-              <div style={{ marginTop: 10, border: "2px dashed #e5e7eb", borderRadius: 12, padding: 12, background: "#f9fafb" }}>
-                <label style={{ cursor: "pointer", display: "inline-block" }}>
-                  <span style={{ color: "#c2410c", fontWeight: 800 }}>Upload metadata CSV or TSV</span>
-                  <input type="file" style={{ display: "none" }} accept=".csv,.tsv,.txt" onChange={handleMetaUpload} />
-                </label>
-
-                {meta && (
-                  <div style={{ marginTop: 10, fontSize: 13 }}>
-                    <div>
-                      <b>Columns:</b> {meta.header.join(", ")}
-                    </div>
-                    <div style={{ marginTop: 8, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                      <div>
-                        <span style={{ fontSize: 12, opacity: 0.75 }}>Batch column</span>
-                        <select
-                          style={{ marginLeft: 8, border: "1px solid #d1d5db", borderRadius: 10, padding: "4px 8px" }}
-                          value={meta.batchColIdx}
-                          onChange={(ev) => {
-                            const idx = Number(ev.target.value);
-                            if (!Number.isFinite(idx)) return;
-                            setMeta((prev) => (prev ? { ...prev, batchColIdx: idx } : prev));
-                            setHarmony(null);
-                            if (counts && meta) {
-                              const map = buildBatchMap({ ...meta, batchColIdx: idx });
-                              const batchByCell = counts.cells.map((id) => map[id] ?? "batch1");
-                              const nBatches = new Set(batchByCell).size || 1;
-                              setData((p) => ({
-                                ...p,
-                                numBatches: nBatches,
-                                harmonized: false,
-                                clustered: false,
-                                trained: false,
-                                metrics: null,
-                              }));
-                            }
-                          }}
-                        >
-                          {meta.header.map((h, i) => (
-                            <option key={h + String(i)} value={i}>
-                              {h}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div style={{ fontSize: 12, opacity: 0.7 }}>Rows: {fmt(meta.rows.length)}</div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div style={{ marginTop: 12, background: "#f9fafb", borderRadius: 12, padding: 12 }}>
-                <div style={{ fontWeight: 800 }}>Detected batches</div>
-                <div style={{ fontSize: 22, fontWeight: 900, color: "#c2410c" }}>{fmt(data.numBatches)}</div>
-                <div style={{ fontSize: 12, opacity: 0.7 }}>If no metadata is uploaded, all cells are treated as one batch.</div>
-              </div>
-
-              <button
-                onClick={runHarmony}
-                disabled={!data.normalized}
-                style={{
-                  width: "100%",
-                  marginTop: 12,
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid #f97316",
-                  background: data.normalized ? "#f97316" : "#e5e7eb",
-                  color: data.normalized ? "white" : "#6b7280",
-                  cursor: data.normalized ? "pointer" : "not-allowed",
-                  fontWeight: 900,
-                }}
-              >
-                <GitMerge size={18} style={{ verticalAlign: "middle", marginRight: 8 }} />
-                Run Harmony style integration
-              </button>
-
-              {data.harmonized && harmony && (
-                <div style={{ marginTop: 12, background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12, padding: 12 }}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", color: "#166534" }}>
-                    <CheckCircle size={18} />
-                    <div>
-                      <div style={{ fontWeight: 900 }}>Batch correction complete in reduced space</div>
-                      <div style={{ fontSize: 13 }}>
-                        PCA: {fmt(harmony.nFeatures)} genes → {fmt(harmony.nPC)} PCs · Iterations: {fmt(harmony.iters)} · Alpha: {fmt(harmony.alpha, 2)}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginTop: 10 }}>
-                    <div style={{ background: "white", border: "1px solid #e5e7eb", borderRadius: 12, padding: 10 }}>
-                      <div style={{ fontSize: 12, opacity: 0.75 }}>Batch centroid distance, median</div>
-                      <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13 }}>
-                        {fmt(harmony.distBeforeSummary.med, 4)} → {fmt(harmony.distAfterSummary.med, 4)}
-                      </div>
-                    </div>
-                    <div style={{ background: "white", border: "1px solid #e5e7eb", borderRadius: 12, padding: 10 }}>
-                      <div style={{ fontSize: 12, opacity: 0.75 }}>Batch centroid distance, max</div>
-                      <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13 }}>
-                        {fmt(harmony.distBeforeSummary.max, 4)} → {fmt(harmony.distAfterSummary.max, 4)}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ marginTop: 10, background: "white", border: "1px solid #e5e7eb", borderRadius: 12, padding: 10 }}>
-                    <div style={{ fontSize: 12, opacity: 0.75 }}>Batch sizes</div>
-                    <div style={{ fontSize: 13, marginTop: 6 }}>
-                      {harmony.batches.map((b: string, i: number) => `${b}: ${harmony.batchSizes[i]}`).join(" · ")}
-                    </div>
-                  </div>
-
-                  <div style={{ marginTop: 10, background: "white", border: "1px solid #e5e7eb", borderRadius: 12, padding: 10 }}>
-                    <div style={{ fontSize: 12, opacity: 0.75 }}>Explained variance, first 5 PCs</div>
-                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13, marginTop: 6 }}>
-                      {harmony.explained
-                        .slice(0, 5)
-                        .map((x: number) => `${(x * 100).toFixed(1)}%`)
-                        .join(" · ")}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-
-      case 4:
-        return (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <h2 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Step 5: Clustering</h2>
-
-            <div style={{ background: "white", border: "1px solid #e5e7eb", borderRadius: 12, padding: 16 }}>
-              <div style={{ borderLeft: "4px solid #6366f1", background: "#eef2ff", padding: 12, marginBottom: 12, fontSize: 13 }}>
-                Typical approach: PCA or Harmony corrected PCs, UMAP, then graph based clustering.
-              </div>
-
-              <button
-                onClick={runClustering}
-                disabled={!data.harmonized}
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid #6366f1",
-                  background: data.harmonized ? "#6366f1" : "#e5e7eb",
-                  color: data.harmonized ? "white" : "#6b7280",
-                  cursor: data.harmonized ? "pointer" : "not-allowed",
-                  fontWeight: 900,
-                }}
-              >
-                <Layers size={18} style={{ verticalAlign: "middle", marginRight: 8 }} />
-                Run clustering
-              </button>
-
-              {data.clustered && (
-                <div style={{ marginTop: 12, background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12, padding: 12 }}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", color: "#166534" }}>
-                    <CheckCircle size={18} />
-                    <div style={{ fontWeight: 900 }}>Clustering complete, placeholder clusters</div>
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginTop: 10, fontSize: 13 }}>
-                    {["35%", "18%", "15%", "20%", "7%", "3%", "2%"].map((p, i) => (
-                      <div key={String(i)} style={{ background: "white", border: "1px solid #e5e7eb", borderRadius: 10, padding: 8 }}>
-                        Cluster {i + 1}: {p}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-
-      case 5:
-        return (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <h2 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Step 6: ML model training</h2>
-
-            <div style={{ borderLeft: "4px solid #ef4444", background: "#fef2f2", padding: 12 }}>
-              <div style={{ fontWeight: 800 }}>Classification task</div>
-              <div style={{ fontSize: 13 }}>Train a classifier using processed expression features.</div>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {[
-                { name: "Random Forest", perf: "★★★★★", desc: "Strong default for high dimensional data", rec: true },
-                { name: "XGBoost", perf: "★★★★☆", desc: "Gradient boosting, often strong", rec: false },
-                { name: "Neural Network", perf: "★★★★☆", desc: "Flexible, needs careful tuning", rec: false },
-                { name: "Logistic Regression", perf: "★★★☆☆", desc: "Interpretable baseline", rec: false },
-                { name: "SVM", perf: "★★★☆☆", desc: "Can work well with scaling", rec: false },
-              ].map((m) => {
-                const active = data.model === m.name;
-                return (
-                  <button
-                    key={m.name}
-                    onClick={() => setData((prev) => ({ ...prev, model: m.name }))}
-                    style={{
-                      width: "100%",
-                      padding: 12,
-                      borderRadius: 12,
-                      border: `2px solid ${active ? "#ef4444" : "#d1d5db"}`,
-                      background: active ? "#fef2f2" : "white",
-                      cursor: "pointer",
-                      textAlign: "left",
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                      <div>
-                        <div style={{ fontWeight: 900 }}>
-                          {m.name}
-                          {m.rec && (
-                            <span style={{ marginLeft: 8, fontSize: 11, background: "#22c55e", color: "white", padding: "2px 8px", borderRadius: 999 }}>
-                              Recommended
-                            </span>
-                          )}
-                        </div>
-                        <div style={{ fontSize: 13, opacity: 0.75 }}>{m.desc}</div>
-                        <div style={{ fontSize: 13, color: "#ca8a04" }}>{m.perf}</div>
-                      </div>
-                      {active && <CheckCircle size={18} color="#ef4444" />}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            <button
-              onClick={train}
-              disabled={!data.clustered}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: "1px solid #ef4444",
-                background: data.clustered ? "#ef4444" : "#e5e7eb",
-                color: data.clustered ? "white" : "#6b7280",
-                cursor: data.clustered ? "pointer" : "not-allowed",
-                fontWeight: 900,
-              }}
-            >
-              <Play size={18} style={{ verticalAlign: "middle", marginRight: 8 }} />
-              Train model
-            </button>
-
-            {data.trained && data.metrics && (
-              <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12, padding: 16 }}>
-                <div style={{ fontWeight: 900, marginBottom: 10 }}>Training results</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
-                  {Object.entries(data.metrics).map(([k, v]) => (
-                    <div key={k} style={{ background: "white", border: "1px solid #e5e7eb", borderRadius: 12, padding: 12 }}>
-                      <div style={{ fontSize: 12, opacity: 0.75 }}>{k === "f1" ? "F1-score" : k}</div>
-                      <div style={{ fontSize: 22, fontWeight: 900 }}>{(Number(v) * 100).toFixed(1)}%</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        );
-
-      case 6:
-        return (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <h2 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Results</h2>
-
-            {data.trained && data.metrics ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <div style={{ background: "white", border: "1px solid #e5e7eb", borderRadius: 12, padding: 16 }}>
-                  <div style={{ fontWeight: 900, marginBottom: 12 }}>Performance summary</div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-                    {Object.entries(data.metrics).map(([k, v]) => (
-                      <div key={k} style={{ textAlign: "center", padding: 12, borderRadius: 12, background: "#eef2ff" }}>
-                        <div style={{ fontSize: 12, opacity: 0.75 }}>{k === "f1" ? "F1" : k}</div>
-                        <div style={{ fontSize: 22, fontWeight: 900 }}>{(Number(v) * 100).toFixed(1)}%</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div style={{ marginTop: 12, background: "#f9fafb", borderRadius: 12, padding: 12 }}>
-                    <div style={{ fontWeight: 900, marginBottom: 8 }}>Pipeline summary</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 13 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span style={{ opacity: 0.75 }}>Cells</span>
-                        <span>{fmt(data.numSamples)}</span>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span style={{ opacity: 0.75 }}>Normalization</span>
-                        <span>{data.normMethod}</span>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span style={{ opacity: 0.75 }}>Batch correction</span>
-                        <span style={{ color: "#16a34a" }}>Harmony style in PC space</span>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span style={{ opacity: 0.75 }}>Model</span>
-                        <span>{data.model}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-                  {["Model", "Predictions", "Report"].map((label) => (
-                    <button
-                      key={label}
-                      style={{
-                        padding: "10px 12px",
-                        borderRadius: 12,
-                        border: "1px solid #d1d5db",
-                        background: "white",
-                        cursor: "pointer",
-                        display: "flex",
-                        gap: 8,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontWeight: 800,
-                      }}
-                    >
-                      <Download size={18} />
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div style={{ textAlign: "center", padding: "60px 0", opacity: 0.7 }}>
-                <BarChart3 size={56} />
-                <div style={{ marginTop: 10 }}>Complete ML training to view results.</div>
-              </div>
-            )}
-          </div>
-        );
-
-      default:
-        return null;
     }
   };
 
@@ -1458,66 +793,398 @@ export default function App() {
 
   const nextDisabled = currentPhase === phases.length - 1 || !canGoTo(Math.min(phases.length - 1, currentPhase + 1));
 
-  return (
-    <div style={{ minHeight: "100vh", background: "#0b1220", padding: 18 }}>
-      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-        <div style={{ background: "white", borderRadius: 18, overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.25)" }}>
-          <div style={{ padding: 18, background: "linear-gradient(90deg, #2563eb, #7c3aed)", color: "white" }}>
-            <div style={{ fontSize: 24, fontWeight: 900 }}>Single-cell RNA-seq ML pipeline</div>
-            <div style={{ opacity: 0.9, marginTop: 4, fontSize: 13 }}>Upload, QC, normalize, Harmony in PC space, cluster, train, inspect.</div>
+  const renderPhase = () => {
+    if (currentPhase === 0) {
+      return (
+        <div style={{ display: "grid", gap: 12 }}>
+          <div style={card}>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>Step 1, upload count matrix</div>
+            <div style={{ marginTop: 6, color: "#4b5563" }}>
+              CSV or TSV, genes as rows, cells as columns, first column is gene identifiers
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <input type="file" accept=".csv,.tsv,.txt" onChange={handleUpload} />
+            </div>
+
+            {data.uploaded && stats && (
+              <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                <div>
+                  <strong>File</strong>: {data.fileName}
+                </div>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ ...card, padding: 12, minWidth: 160 }}>
+                    <div style={{ color: "#6b7280", fontSize: 12 }}>Genes</div>
+                    <div style={{ fontSize: 22, fontWeight: 800 }}>{fmt(stats.nGenes)}</div>
+                  </div>
+                  <div style={{ ...card, padding: 12, minWidth: 160 }}>
+                    <div style={{ color: "#6b7280", fontSize: 12 }}>Cells</div>
+                    <div style={{ fontSize: 22, fontWeight: 800 }}>{fmt(stats.nCells)}</div>
+                  </div>
+                  <div style={{ ...card, padding: 12, minWidth: 160 }}>
+                    <div style={{ color: "#6b7280", fontSize: 12 }}>Mito genes detected</div>
+                    <div style={{ fontSize: 22, fontWeight: 800 }}>{fmt(stats.nMitoGenes)}</div>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ ...card, padding: 12, minWidth: 240 }}>
+                    <div style={{ color: "#6b7280", fontSize: 12 }}>Library size, min · median · max</div>
+                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                      {fmt(stats.libSummary.min)} · {fmt(stats.libSummary.med)} · {fmt(stats.libSummary.max)}
+                    </div>
+                  </div>
+                  <div style={{ ...card, padding: 12, minWidth: 240 }}>
+                    <div style={{ color: "#6b7280", fontSize: 12 }}>Detected genes, min · median · max</div>
+                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                      {fmt(stats.detectedSummary.min)} · {fmt(stats.detectedSummary.med)} · {fmt(stats.detectedSummary.max)}
+                    </div>
+                  </div>
+                  <div style={{ ...card, padding: 12, minWidth: 240 }}>
+                    <div style={{ color: "#6b7280", fontSize: 12 }}>Mito percent, min · median · max</div>
+                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                      {fmt(stats.mitoPctSummary.min, 2)} · {fmt(stats.mitoPctSummary.med, 2)} ·{" "}
+                      {fmt(stats.mitoPctSummary.max, 2)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          <div style={{ display: "flex", borderBottom: "1px solid #e5e7eb", overflowX: "auto" }}>
-            {phases.map((phase) => {
-              const Icon = phase.icon;
-              const disabled = !canGoTo(phase.id);
-              const isActive = currentPhase === phase.id;
+          {error && (
+            <div style={{ ...card, borderColor: "#fecaca", background: "#fff1f2" }}>
+              <strong style={{ color: "#991b1b" }}>Error</strong>
+              <div style={{ color: "#991b1b", marginTop: 4 }}>{error}</div>
+            </div>
+          )}
+        </div>
+      );
+    }
 
-              return (
+    if (currentPhase === 1) {
+      return (
+        <div style={{ display: "grid", gap: 12 }}>
+          <div style={card}>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>Step 2, quality control</div>
+            <div style={{ marginTop: 6, color: "#4b5563" }}>
+              Gene filter, expressed in at least 2 cells. Cell filter, at least 200 detected genes.
+            </div>
+
+            <button
+              onClick={runQC}
+              disabled={!data.uploaded}
+              style={{
+                marginTop: 12,
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid #e5e7eb",
+                background: data.uploaded ? "#111827" : "#9ca3af",
+                color: "white",
+                cursor: data.uploaded ? "pointer" : "not-allowed",
+                fontWeight: 700,
+              }}
+            >
+              Apply QC
+            </button>
+
+            {data.qcDone && qcReport && (
+              <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                <div>
+                  <strong>QC complete</strong>
+                </div>
+                <div style={{ color: "#374151" }}>
+                  Genes {fmt(qcReport.before.nGenes)} → {fmt(qcReport.after.nGenes)} · Cells {fmt(qcReport.before.nCells)} →
+                  {fmt(qcReport.after.nCells)}
+                </div>
+
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ ...card, padding: 12, minWidth: 220 }}>
+                    <div style={{ color: "#6b7280", fontSize: 12 }}>Library size median</div>
+                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                      {fmt(qcReport.after.libSummary.med)}
+                    </div>
+                  </div>
+                  <div style={{ ...card, padding: 12, minWidth: 220 }}>
+                    <div style={{ color: "#6b7280", fontSize: 12 }}>Detected genes median</div>
+                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                      {fmt(qcReport.after.detectedSummary.med)}
+                    </div>
+                  </div>
+                  <div style={{ ...card, padding: 12, minWidth: 220 }}>
+                    <div style={{ color: "#6b7280", fontSize: 12 }}>Mito percent median</div>
+                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                      {fmt(qcReport.after.mitoPctSummary.med, 2)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {error && (
+            <div style={{ ...card, borderColor: "#fecaca", background: "#fff1f2" }}>
+              <strong style={{ color: "#991b1b" }}>Error</strong>
+              <div style={{ color: "#991b1b", marginTop: 4 }}>{error}</div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (currentPhase === 2) {
+      return (
+        <div style={{ display: "grid", gap: 12 }}>
+          <div style={card}>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>Step 3, normalization</div>
+            <div style={{ marginTop: 6, color: "#4b5563" }}>
+              Choose a method. This demo normalizes in the browser and keeps the transformed matrix for later steps.
+            </div>
+
+            <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {[
+                { id: "SCTransform", label: "SCTransform" },
+                { id: "LogNormalize", label: "LogNormalize" },
+                { id: "CPM", label: "CPM" },
+              ].map((m) => (
                 <button
-                  key={phase.id}
-                  onClick={() => !disabled && setCurrentPhase(phase.id)}
-                  title={disabled ? "Complete previous steps to unlock" : phase.name}
+                  key={m.id}
+                  onClick={() => runNorm(m.id)}
+                  disabled={!data.qcDone}
                   style={{
-                    minWidth: 150,
-                    flex: "1 0 auto",
-                    padding: 12,
-                    border: "none",
-                    background: isActive ? "white" : "#f9fafb",
-                    borderBottom: isActive ? "4px solid #2563eb" : "4px solid transparent",
-                    cursor: disabled ? "not-allowed" : "pointer",
-                    opacity: disabled ? 0.6 : 1,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 6,
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #e5e7eb",
+                    background: !data.qcDone ? "#f3f4f6" : data.normMethod === m.id ? "#111827" : "white",
+                    color: !data.qcDone ? "#9ca3af" : data.normMethod === m.id ? "white" : "#111827",
+                    cursor: data.qcDone ? "pointer" : "not-allowed",
+                    fontWeight: 700,
                   }}
                 >
-                  <div style={{ position: "relative" }}>
-                    <Icon size={18} color={isActive ? "#2563eb" : "#6b7280"} />
-                    {disabled && (
-                      <span style={{ position: "absolute", right: -10, top: -10 }}>
-                        <Lock size={12} color="#6b7280" />
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: isActive ? "#111827" : "#374151" }}>{phase.name}</div>
+                  {m.label}
                 </button>
-              );
-            })}
+              ))}
+            </div>
+
+            {data.normalized && normalizedMatrix && (
+              <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                <div>
+                  <strong>Applied</strong>: {data.normMethod}
+                </div>
+                <div style={{ color: "#4b5563" }}>{normalizedMatrix.details}</div>
+
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ ...card, padding: 12, minWidth: 220 }}>
+                    <div style={{ color: "#6b7280", fontSize: 12 }}>Value min</div>
+                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                      {fmt(normalizedMatrix.summary.min, 4)}
+                    </div>
+                  </div>
+                  <div style={{ ...card, padding: 12, minWidth: 220 }}>
+                    <div style={{ color: "#6b7280", fontSize: 12 }}>Value median</div>
+                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                      {fmt(normalizedMatrix.summary.med, 4)}
+                    </div>
+                  </div>
+                  <div style={{ ...card, padding: 12, minWidth: 220 }}>
+                    <div style={{ color: "#6b7280", fontSize: 12 }}>Value max</div>
+                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                      {fmt(normalizedMatrix.summary.max, 4)}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ color: "#6b7280", fontSize: 12 }}>
+                  Summary computed on {normalizedMatrix.summary.sampled ? "a sample" : "all values"}
+                </div>
+              </div>
+            )}
           </div>
 
-          <div style={{ padding: 18 }}>{renderPhase()}</div>
+          {error && (
+            <div style={{ ...card, borderColor: "#fecaca", background: "#fff1f2" }}>
+              <strong style={{ color: "#991b1b" }}>Error</strong>
+              <div style={{ color: "#991b1b", marginTop: 4 }}>{error}</div>
+            </div>
+          )}
+        </div>
+      );
+    }
 
-          <div style={{ background: "#f9fafb", padding: 14, display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid #e5e7eb" }}>
+    return (
+      <div style={{ display: "grid", gap: 12 }}>
+        <div style={card}>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>Step 4, batch correction</div>
+          <div style={{ marginTop: 6, color: "#4b5563" }}>
+            Upload optional metadata mapping cell id to batch. Example header: cell,batch
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <input type="file" accept=".csv,.tsv,.txt" onChange={handleMetaUpload} />
+          </div>
+
+          {meta && (
+            <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+              <div>
+                <strong>Columns</strong>: {meta.header.join(", ")}
+              </div>
+
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                <div>
+                  <span style={{ color: "#6b7280", fontSize: 12 }}>Batch column</span>
+                  <select
+                    value={meta.batchColIdx}
+                    onChange={(ev) => {
+                      const idx = Number(ev.target.value);
+                      if (!Number.isFinite(idx)) return;
+                      setMeta((prev) => (prev ? { ...prev, batchColIdx: idx } : prev));
+                      setHarmony(null);
+
+                      if (counts && meta) {
+                        const map = buildBatchMap({ ...meta, batchColIdx: idx });
+                        const batchByCell = counts.cells.map((id) => map[id] ?? "batch1");
+                        const nBatches = new Set(batchByCell).size || 1;
+                        setData((p) => ({ ...p, numBatches: nBatches, harmonized: false }));
+                      }
+                    }}
+                    style={{ marginLeft: 8, padding: "6px 8px", borderRadius: 8, border: "1px solid #e5e7eb" }}
+                  >
+                    {meta.header.map((h, i) => (
+                      <option key={h + String(i)} value={i}>
+                        {h}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ color: "#6b7280", fontSize: 12 }}>Rows: {fmt(meta.rows.length)}</div>
+              </div>
+            </div>
+          )}
+
+          <div style={{ marginTop: 12, display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ ...card, padding: 12, minWidth: 220 }}>
+              <div style={{ color: "#6b7280", fontSize: 12 }}>Detected batches</div>
+              <div style={{ fontSize: 22, fontWeight: 800 }}>{fmt(data.numBatches)}</div>
+              <div style={{ color: "#6b7280", fontSize: 12, marginTop: 4 }}>
+                If no metadata is uploaded, all cells are treated as one batch
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={runHarmony}
+            disabled={!data.normalized}
+            style={{
+              marginTop: 12,
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid #e5e7eb",
+              background: data.normalized ? "#111827" : "#9ca3af",
+              color: "white",
+              cursor: data.normalized ? "pointer" : "not-allowed",
+              fontWeight: 700,
+            }}
+          >
+            Run Harmony style correction in PC space
+          </button>
+
+          {data.harmonized && harmony && (
+            <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+              <div>
+                <strong>Batch correction complete</strong>
+              </div>
+              <div style={{ color: "#374151" }}>
+                PCA: {fmt(harmony.nFeatures)} genes → {fmt(harmony.nPC)} PCs · Iterations: {fmt(harmony.iters)} · Alpha:{" "}
+                {fmt(harmony.alpha, 2)}
+              </div>
+
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ ...card, padding: 12, minWidth: 260 }}>
+                  <div style={{ color: "#6b7280", fontSize: 12 }}>Batch centroid distance, median</div>
+                  <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                    {fmt(harmony.distBeforeSummary.med, 4)} → {fmt(harmony.distAfterSummary.med, 4)}
+                  </div>
+                </div>
+                <div style={{ ...card, padding: 12, minWidth: 260 }}>
+                  <div style={{ color: "#6b7280", fontSize: 12 }}>Batch sizes</div>
+                  <div style={{ color: "#374151" }}>
+                    {harmony.batches.map((b: string, i: number) => `${b}: ${harmony.batchSizes[i]}`).join(" · ")}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ ...card, padding: 12 }}>
+                <div style={{ color: "#6b7280", fontSize: 12 }}>Explained variance, first 5 PCs</div>
+                <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                  {harmony.explained
+                    .slice(0, 5)
+                    .map((x: number) => `${(x * 100).toFixed(1)}%`)
+                    .join(" · ")}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {error && (
+          <div style={{ ...card, borderColor: "#fecaca", background: "#fff1f2" }}>
+            <strong style={{ color: "#991b1b" }}>Error</strong>
+            <div style={{ color: "#991b1b", marginTop: 4 }}>{error}</div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#f3f4f6", padding: 18 }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+        <div style={{ ...card, padding: 18 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontSize: 22, fontWeight: 900 }}>Single cell RNA seq pipeline demo</div>
+              <div style={{ color: "#6b7280", marginTop: 4 }}>Upload, QC, normalize, Harmony style correction in PC space</div>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {phases.map((p) => {
+                const disabled = !canGoTo(p.id);
+                const active = currentPhase === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => !disabled && setCurrentPhase(p.id)}
+                    style={{
+                      padding: "8px 10px",
+                      borderRadius: 10,
+                      border: "1px solid #e5e7eb",
+                      background: active ? "#111827" : "white",
+                      color: active ? "white" : disabled ? "#9ca3af" : "#111827",
+                      cursor: disabled ? "not-allowed" : "pointer",
+                      fontWeight: 800,
+                    }}
+                    title={disabled ? "Complete previous steps to unlock" : p.name}
+                  >
+                    {p.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{ marginTop: 16 }}>{renderPhase()}</div>
+
+          <div style={{ marginTop: 16, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <button
               onClick={goPrev}
               disabled={currentPhase === 0}
               style={{
-                padding: "8px 12px",
-                borderRadius: 12,
-                border: "1px solid #d1d5db",
-                background: currentPhase === 0 ? "#e5e7eb" : "white",
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid #e5e7eb",
+                background: currentPhase === 0 ? "#f3f4f6" : "white",
+                color: currentPhase === 0 ? "#9ca3af" : "#111827",
                 cursor: currentPhase === 0 ? "not-allowed" : "pointer",
                 fontWeight: 800,
               }}
@@ -1525,7 +1192,7 @@ export default function App() {
               Previous
             </button>
 
-            <div style={{ fontSize: 13, opacity: 0.75 }}>
+            <div style={{ color: "#6b7280", fontWeight: 700 }}>
               Step {currentPhase + 1} of {phases.length}
             </div>
 
@@ -1533,10 +1200,10 @@ export default function App() {
               onClick={goNext}
               disabled={nextDisabled}
               style={{
-                padding: "8px 12px",
-                borderRadius: 12,
-                border: "1px solid #2563eb",
-                background: nextDisabled ? "#93c5fd" : "#2563eb",
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid #e5e7eb",
+                background: nextDisabled ? "#9ca3af" : "#111827",
                 color: "white",
                 cursor: nextDisabled ? "not-allowed" : "pointer",
                 fontWeight: 900,
