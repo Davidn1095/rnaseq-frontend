@@ -32,6 +32,18 @@ type RunResult = {
   payload?: unknown;
 };
 
+function isMissingFile422(payload: any) {
+  const detail = payload?.detail;
+  if (!Array.isArray(detail)) return false;
+  return detail.some((d: any) => {
+    const loc = Array.isArray(d?.loc) ? d.loc.join(".") : "";
+    const msg = typeof d?.msg === "string" ? d.msg.toLowerCase() : "";
+    const typ = typeof d?.type === "string" ? d.type.toLowerCase() : "";
+    return loc === "body.file" && (typ === "missing" || msg.includes("field required"));
+  });
+}
+
+
 const PHASES: Phase[] = [
   { key: "upload", title: "Upload Data", subtitle: "Load counts matrix" },
   { key: "quality_control", title: "Quality Control", subtitle: "Checks and filtering" },
@@ -93,8 +105,18 @@ function estimateMatrixShape(lines: string[]) {
   return { rows, cols };
 }
 
+function sanitizeApiBase(apiBase: string) {
+  // Allow pasting the Swagger UI URL. Strip fragments and common doc suffixes.
+  let base = apiBase.trim();
+  base = base.replace(/#.*$/, "");
+  base = base.replace(/\/openapi\.json\/?$/, "");
+  base = base.replace(/\/docs\/?$/, "");
+  base = base.replace(/\/+$/, "");
+  return base;
+}
+
 function buildUrl(apiBase: string, path: string) {
-  const base = apiBase.trim().replace(/\/+$/, "");
+  const base = sanitizeApiBase(apiBase);
   const p = path.startsWith("/") ? path : `/${path}`;
   return `${base}${p}`;
 }
@@ -143,12 +165,11 @@ async function runWithBackend(opts: {
   try {
     // Important: when sending FormData, do NOT set Content-Type manually.
     // Also avoid passing `headers: undefined`.
-    const headers: Record<string, string> = { Accept: "application/json" };
-    if (!form) headers["Content-Type"] = "application/json";
-
     const init: RequestInit = {
       method,
-      headers,
+      // For multipart FormData, do not set headers. Let the browser set multipart boundaries.
+      headers: form ? undefined : { Accept: "application/json", "Content-Type": "application/json" },
+      body: form ? form : json ? JSON.stringify(json) : undefined,
       body: form ? form : json ? JSON.stringify(json) : undefined,
       signal: controller.signal,
       mode: "cors",
@@ -435,13 +456,21 @@ export default function App() {
     const form = new FormData();
     form.append("file", file, file.name);
 
-    if (apiBase.trim()) {
-      log(`Calling backend: POST ${buildUrl(apiBase, "/normalize")}  file=${file.name} (${prettyBytes(file.size)})`);
+    const base = sanitizeApiBase(apiBase);
+
+    if (base.trim()) {
+      log(`Calling backend: POST ${buildUrl(base, "/normalize")}  file=${file.name} (${prettyBytes(file.size)})`);
     } else {
       log("No API base URL set. Running simulated normalization.");
     }
 
-    const res = await runWithBackend({ apiBase, path: "/normalize", form });
+    let res = await runWithBackend({ apiBase: base, path: "/normalize", form });
+
+    // Some deployments define /normalize/ with a trailing slash. Avoid redirects that can drop multipart bodies.
+    if (!res.ok && base.trim() && isMissingFile422(res.payload)) {
+      log("Backend reports missing form field 'file'. Retrying with /normalize/ …");
+      res = await runWithBackend({ apiBase: base, path: "/normalize/", form });
+    }
 
     if (res.ok) {
       setNormStatus("done");
@@ -562,7 +591,8 @@ export default function App() {
     }
 
     log("Health check started…");
-    const res = await runWithBackend({ apiBase, path: "/health", method: "GET" });
+    const base = sanitizeApiBase(apiBase);
+    const res = await runWithBackend({ apiBase: base, path: "/health", method: "GET" });
 
     if (res.ok) {
       log("Health check OK.");
@@ -619,6 +649,9 @@ export default function App() {
   }
 
   function BackendSettings() {
+    const base = sanitizeApiBase(apiBase);
+    const changed = apiBase.trim() && base !== apiBase.trim();
+
     return (
       <details className="settings">
         <summary>Backend API, optional</summary>
@@ -637,7 +670,8 @@ export default function App() {
             <button className="ghostBtn" type="button" onClick={testHealth} disabled={!apiBase.trim()}>
               Test /health
             </button>
-            <div className="settingsMini">Resolved normalize URL: {apiBase.trim() ? buildUrl(apiBase, "/normalize") : "—"}</div>
+            <div className="settingsMini">Resolved normalize URL: {base ? buildUrl(base, "/normalize") : "—"}
+            {changed ? <div className="settingsMini">Note: stripped "/docs" from the base URL.</div> : null}</div>
           </div>
         </div>
       </details>
