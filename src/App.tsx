@@ -777,8 +777,7 @@ export default function App() {
 
       if (normalizedText) {
         const looksLikeTable =
-          normalizedText.includes("
-") && (normalizedText.includes(",") || normalizedText.includes("	"));
+          normalizedText.includes("\\n") && (normalizedText.includes(",") || normalizedText.includes("\\t"));
         const mime = looksLikeTable ? "text/csv" : "application/json";
         const ext = looksLikeTable ? "csv" : "json";
         const blob = new Blob([normalizedText], { type: mime });
