@@ -492,19 +492,53 @@ export default function App() {
     }
   }
 
-  async function doHarmony() {
-    if (normStatus !== "done") {
-      log("Batch correction is locked. Complete normalization first.");
-      return;
-    }
+async function doHarmony() {
+  if (normStatus !== "done") {
+    log("Batch correction is locked. Complete normalization first.");
+    return;
+  }
+  if (!file) {
+    log("No file selected.");
+    return;
+  }
 
-    // Backend has no /harmony. Simulate to keep the UI flow.
-    setHarmStatus("running");
-    log("Harmony batch correction started…");
+  setHarmStatus("running");
+  log("Harmony batch correction started…");
+
+  const base = sanitizeApiBase(apiBase);
+
+  if (!base.trim()) {
+    log("No API base URL set. Running simulated batch correction.");
     await sleep(700);
     setHarmStatus("done");
-    log("Harmony batch correction done (simulated). Backend endpoint /harmony not available.");
+    log("Harmony batch correction done (simulated). No API base URL set.");
+    return;
   }
+
+  const form = new FormData();
+  form.append("file", file, file.name);
+
+  log(`Calling backend: POST ${buildUrl(base, "/harmony")}  file=${file.name} (${prettyBytes(file.size)})`);
+
+  let res = await runWithBackend({ apiBase: base, path: "/harmony", form });
+
+  if (!res.ok && isMissingFile422(res.payload)) {
+    log("Backend reports missing form field 'file'. Retrying with /harmony/ …");
+    res = await runWithBackend({ apiBase: base, path: "/harmony/", form });
+  }
+
+  if (res.ok) {
+    setHarmStatus("done");
+    const payload = res.payload ?? { message: res.message };
+    const txt = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+    log("Harmony batch correction done (backend).");
+    log(`Harmony output: ${txt.length > 220 ? `${txt.slice(0, 220)}…` : txt}`);
+  } else {
+    setHarmStatus("error");
+    log(`Harmony batch correction failed: ${res.message}`);
+  }
+}
+
 
   async function doClustering() {
     if (harmStatus !== "done") {
