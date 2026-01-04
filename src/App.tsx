@@ -167,9 +167,10 @@ async function runWithBackend(opts: {
     // Also avoid passing `headers: undefined`.
     const init: RequestInit = {
       method,
-      // For multipart FormData, do not set headers. Let the browser set multipart boundaries.
-      headers: form ? undefined : { Accept: "application/json", "Content-Type": "application/json" },
-      body: form ? form : json ? JSON.stringify(json) : undefined,
+      // For multipart FormData, do not set Content-Type. Let the browser set multipart boundaries.
+      headers: form
+        ? { Accept: "application/json" }
+        : { Accept: "application/json", "Content-Type": "application/json" },
       body: form ? form : json ? JSON.stringify(json) : undefined,
       signal: controller.signal,
       mode: "cors",
