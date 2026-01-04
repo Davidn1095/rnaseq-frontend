@@ -1,5 +1,3 @@
-<<<<<<< HEAD
-# ---- build stage ----
 FROM node:20-slim AS build
 WORKDIR /app
 
