@@ -23,7 +23,7 @@ body {
 }
 
 .page {
-  max-width: 1260px;
+  width: 100%;
   margin: 0 auto;
   padding: 20px;
 }
@@ -60,7 +60,7 @@ body {
 
 .grid {
   display: grid;
-  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  grid-template-columns: 340px 1fr;
   gap: 16px;
   margin-top: 16px;
 }
