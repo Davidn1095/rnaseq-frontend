@@ -8,6 +8,7 @@ body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI
 .small { font-size: 12px; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .api { display: flex; gap: 8px; align-items: center; }
+.api-field { display: grid; gap: 6px; }
 .input { padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 12px; min-width: 420px; }
 .select { padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 12px; background: white; }
 .btn { padding: 10px 12px; border: 1px solid #111827; border-radius: 12px; background: #111827; color: white; cursor: pointer; }

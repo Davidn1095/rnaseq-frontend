@@ -71,3 +71,7 @@ export default defineConfig([
   },
 ])
 ```
+
+## Backend configuration
+
+Set `VITE_API_BASE_URL` to point the UI at a custom backend. When unset, the app defaults to the Cloud Run backend and still allows manual overrides in the UI input field.
