@@ -45,7 +45,7 @@ export default function Visualization({
   const [groupBy, setGroupBy] = useState<"disease" | "accession">("disease");
 
   useEffect(() => {
-    if (mode === "single" && tab === "overlap") {
+    if (mode === "single" && (tab === "overlap" || tab === "concordance")) {
       setTab("umap");
     }
   }, [mode, tab]);
@@ -57,13 +57,14 @@ export default function Visualization({
   const tabLabels = useMemo(() => {
     const base = [
       { id: "umap", label: "UMAP" },
+      { id: "expression", label: "Expression" },
       { id: "dot", label: "Dot plot" },
       { id: "composition", label: "Composition" },
       { id: "violin", label: "Violin" },
       { id: "volcano", label: "Volcano" },
     ];
     if (mode === "compare") {
-      base.push({ id: "overlap", label: "Overlap" });
+      base.push({ id: "concordance", label: "Concordance" }, { id: "overlap", label: "Overlap" });
     }
     return base;
   }, [mode]);
@@ -168,6 +169,16 @@ export default function Visualization({
           />
         ) : null}
 
+        {tab === "expression" ? (
+          <ExpressionPlaceholder
+            mode={mode}
+            disease={disease}
+            leftDisease={leftDisease}
+            rightDisease={rightDisease}
+            genes={markerGenes}
+          />
+        ) : null}
+
         {tab === "composition" ? (
           <CompositionPlaceholder groupBy={groupBy} onGroupByChange={setGroupBy} />
         ) : null}
@@ -184,6 +195,14 @@ export default function Visualization({
             rightDisease={rightDisease}
             contrast={contrast}
             cellType={cellType}
+          />
+        ) : null}
+
+        {tab === "concordance" && mode === "compare" ? (
+          <ConcordancePlaceholder
+            mode={mode}
+            leftDisease={leftDisease}
+            rightDisease={rightDisease}
           />
         ) : null}
 

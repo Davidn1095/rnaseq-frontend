@@ -27,7 +27,10 @@ export default function VolcanoPlaceholder({
     <div className="panel">
       <div className="panel-header">
         <div>
-          <div className="h3">Volcano</div>
+          <div className="h3">DE volcano (gene-level, per cell type)</div>
+          <div className="muted small">
+            Computed from donor-level pseudobulk within the selected cell type.
+          </div>
           <div className="muted small">Contrast: {contrastLabel}</div>
           <div className="muted small">Cell type: {cellType}</div>
         </div>
