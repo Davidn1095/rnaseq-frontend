@@ -22,13 +22,15 @@ type Manifest = {
 };
 
 const DEFAULT_API_BASE = "https://rnaseq-backend-y654q6wo2q-ew.a.run.app";
+const ENV_API_BASE = import.meta.env.VITE_API_BASE_URL;
+const INITIAL_API_BASE = ENV_API_BASE && ENV_API_BASE.length > 0 ? ENV_API_BASE : DEFAULT_API_BASE;
 
 function uniqSorted(xs: string[]) {
   return Array.from(new Set(xs)).sort();
 }
 
 export default function App() {
-  const [apiBase, setApiBase] = useState(DEFAULT_API_BASE);
+  const [apiBase, setApiBase] = useState(INITIAL_API_BASE);
   const [manifest, setManifest] = useState<Manifest | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
 
@@ -45,6 +47,7 @@ export default function App() {
 
   const [vizTab, setVizTab] = useState<"umap" | "dot" | "comp" | "volcano" | "overlap">("umap");
   const [contrast, setContrast] = useState<"left" | "right">("left");
+  const apiBaseDefaultLabel = ENV_API_BASE ? "VITE_API_BASE_URL" : "Cloud Run default";
 
   async function loadManifest() {
     setLoadErr(null);
@@ -59,15 +62,29 @@ export default function App() {
       // set defaults from manifest
       if (js.cell_types?.length) setCellType(js.cell_types[0]);
 
+      const manifestDiseases = js.diseases ?? [];
+      const manifestNonHealthy = manifestDiseases.filter((d) => d !== "Healthy");
+      const defaultDiseaseA = manifestNonHealthy[0] ?? "Disease A";
+      const defaultLeft = manifestNonHealthy[0] ?? "Disease A";
+      const defaultRight = manifestNonHealthy[1] ?? defaultLeft;
+
+      const nextDiseaseA = manifestNonHealthy.includes(diseaseA) ? diseaseA : defaultDiseaseA;
+      const nextLeft = manifestNonHealthy.includes(leftDisease) ? leftDisease : defaultLeft;
+      const nextRight = manifestNonHealthy.includes(rightDisease) ? rightDisease : defaultRight;
+
+      setDiseaseA(nextDiseaseA);
+      setLeftDisease(nextLeft);
+      setRightDisease(nextRight);
+
       // auto-select Healthy accessions
       const healthy = js.accessions.filter((a) => a.disease === "Healthy").map((a) => a.id);
 
       const diseaseIds = (d: string) => js.accessions.filter((a) => a.disease === d).map((a) => a.id);
 
       // seed selections
-      setDiseaseAAcc(diseaseIds(diseaseA));
-      setLeftAcc(diseaseIds(leftDisease));
-      setRightAcc(diseaseIds(rightDisease));
+      setDiseaseAAcc(diseaseIds(nextDiseaseA));
+      setLeftAcc(diseaseIds(nextLeft));
+      setRightAcc(diseaseIds(nextRight));
 
       // basic sanity checks
       console.assert(healthy.length >= 1, "Expected at least one Healthy accession");
@@ -185,12 +202,15 @@ export default function App() {
         </div>
 
         <div className="api">
-          <input
-            className="input mono"
-            value={apiBase}
-            onChange={(e) => setApiBase(e.target.value)}
-            placeholder="https://rnaseq-backend-xxxxx.europe-west1.run.app"
-          />
+          <div className="api-field">
+            <input
+              className="input mono"
+              value={apiBase}
+              onChange={(e) => setApiBase(e.target.value)}
+              placeholder="https://rnaseq-backend-xxxxx.europe-west1.run.app"
+            />
+            <div className="muted small">Default: {apiBaseDefaultLabel} (editable)</div>
+          </div>
           <button className="btn" onClick={loadManifest}>Load manifest</button>
         </div>
       </header>
