@@ -3,7 +3,7 @@ import type { Mode } from "../../lib/types";
 
 type UMAPPlaceholderProps = {
   mode: Mode;
-  cellType: string;
+  selectedCellTypes: string[];
   selectedAccessionCount: number;
   disease: string;
   leftDisease: string;
@@ -12,13 +12,14 @@ type UMAPPlaceholderProps = {
 
 export default function UMAPPlaceholder({
   mode,
-  cellType,
+  selectedCellTypes,
   selectedAccessionCount,
   disease,
   leftDisease,
   rightDisease,
 }: UMAPPlaceholderProps) {
   const cohortLabel = mode === "single" ? disease : `${leftDisease} + ${rightDisease}`;
+  const cellTypeLabel = selectedCellTypes.length > 0 ? selectedCellTypes.join(", ") : "None selected";
   const plotRef = useRef<HTMLDivElement | null>(null);
   const clusterTraces = useMemo(() => {
     const totalPoints = Math.max(320, Math.min(1600, selectedAccessionCount * 40));
@@ -86,7 +87,7 @@ export default function UMAPPlaceholder({
       <div className="panel-header">
         <div>
           <div className="h3">UMAP</div>
-          <div className="muted small">Cohort: {cohortLabel} · Cell type: {cellType}</div>
+          <div className="muted small">Cohort: {cohortLabel} · Cell types: {cellTypeLabel}</div>
           <div className="muted small">Selected accessions: {selectedAccessionCount}</div>
         </div>
         <div className="legend">

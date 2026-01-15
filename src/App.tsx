@@ -17,7 +17,7 @@ export default function App() {
   const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("single");
-  const [cellType, setCellType] = useState("");
+  const [selectedCellTypes, setSelectedCellTypes] = useState<string[]>([]);
   const [disease, setDisease] = useState("");
   const [leftDisease, setLeftDisease] = useState("");
   const [rightDisease, setRightDisease] = useState("");
@@ -118,7 +118,7 @@ export default function App() {
       const resolvedLeft = nonHealthy.includes(leftDisease) ? leftDisease : nextLeft;
       const resolvedRight = nonHealthy.includes(rightDisease) ? rightDisease : nextRight;
 
-      setCellType(response.cell_types[0] ?? "");
+      setSelectedCellTypes(response.cell_types ?? []);
       setDisease(resolvedDisease);
       setLeftDisease(resolvedLeft);
       setRightDisease(resolvedRight);
@@ -219,8 +219,8 @@ export default function App() {
           isLoading={isLoading}
           mode={mode}
           onModeChange={setMode}
-          cellType={cellType}
-          onCellTypeChange={setCellType}
+          selectedCellTypes={selectedCellTypes}
+          onSelectedCellTypesChange={setSelectedCellTypes}
           disease={disease}
           onDiseaseChange={handleDiseaseChange}
           leftDisease={leftDisease}
@@ -244,7 +244,7 @@ export default function App() {
           disease={disease}
           leftDisease={leftDisease}
           rightDisease={rightDisease}
-          cellType={cellType}
+          selectedCellTypes={selectedCellTypes}
           selectedAccessionCount={selectedAccessionCount}
           markerPanels={markerPanels}
           markerPanel={markerPanel}
