@@ -41,7 +41,8 @@ export default function DotPlotPlaceholder({
         <div>
           <div className="h3">Dot plot</div>
           <div className="muted small">Axes: genes × cell types</div>
-          <div className="muted small">Color: logFC for {contrastLabel}</div>
+          <div className="muted small">Dot size: % cells expressing</div>
+          <div className="muted small">Color: mean expression or logFC for {contrastLabel}</div>
         </div>
         {mode === "compare" ? (
           <div className="field">
