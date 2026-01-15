@@ -6,7 +6,7 @@ type VolcanoPlaceholderProps = {
   leftDisease: string;
   rightDisease: string;
   contrast: "left" | "right";
-  cellType: string;
+  selectedCellTypes: string[];
 };
 
 export default function VolcanoPlaceholder({
@@ -15,13 +15,14 @@ export default function VolcanoPlaceholder({
   leftDisease,
   rightDisease,
   contrast,
-  cellType,
+  selectedCellTypes,
 }: VolcanoPlaceholderProps) {
   const contrastLabel = mode === "single"
     ? `${disease} vs Healthy`
     : contrast === "left"
       ? `${leftDisease} vs Healthy`
       : `${rightDisease} vs Healthy`;
+  const cellTypeLabel = selectedCellTypes.length > 0 ? selectedCellTypes.join(", ") : "None selected";
 
   return (
     <div className="panel">
@@ -32,7 +33,7 @@ export default function VolcanoPlaceholder({
             Computed from donor-level pseudobulk within the selected cell type.
           </div>
           <div className="muted small">Contrast: {contrastLabel}</div>
-          <div className="muted small">Cell type: {cellType}</div>
+          <div className="muted small">Cell types: {cellTypeLabel}</div>
         </div>
         <div className="muted small">Compute disabled until analysis is wired.</div>
       </div>

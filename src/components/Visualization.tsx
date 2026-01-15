@@ -15,7 +15,7 @@ type VisualizationProps = {
   disease: string;
   leftDisease: string;
   rightDisease: string;
-  cellType: string;
+  selectedCellTypes: string[];
   selectedAccessionCount: number;
   markerPanels: string[];
   markerPanel: string;
@@ -32,7 +32,7 @@ export default function Visualization({
   disease,
   leftDisease,
   rightDisease,
-  cellType,
+  selectedCellTypes,
   selectedAccessionCount,
   markerPanels,
   markerPanel,
@@ -145,7 +145,7 @@ export default function Visualization({
         {tab === "umap" ? (
           <UMAPPlaceholder
             mode={mode}
-            cellType={cellType}
+            selectedCellTypes={selectedCellTypes}
             selectedAccessionCount={selectedAccessionCount}
             disease={disease}
             leftDisease={leftDisease}
@@ -194,7 +194,7 @@ export default function Visualization({
             leftDisease={leftDisease}
             rightDisease={rightDisease}
             contrast={contrast}
-            cellType={cellType}
+            selectedCellTypes={selectedCellTypes}
           />
         ) : null}
 

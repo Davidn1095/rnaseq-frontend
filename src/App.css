@@ -84,6 +84,28 @@ body {
   margin-top: 16px;
 }
 
+.comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.comparison-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.shared-settings {
+  display: grid;
+  gap: 12px;
+}
+
+.comparison-actions {
+  margin-top: 4px;
+}
+
 .card.sub {
   background: #f8fafc;
   border: 1px dashed var(--border);
@@ -135,6 +157,11 @@ body {
 
 .pill.big {
   padding: 8px 14px;
+}
+
+.pill.subtle {
+  color: var(--muted);
+  background: #f8fafc;
 }
 
 .btn {
@@ -198,10 +225,50 @@ body {
   font-size: 12px;
 }
 
+.chip.removable {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.chip.removable span {
+  font-weight: 700;
+}
+
 .chip.locked {
   background: var(--accent-soft);
   border-color: #bfdbfe;
   color: #1e3a8a;
+}
+
+.multi-select {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.multi-select-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.multi-select-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #fff;
+}
+
+.multi-select-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
 }
 
 .list {
@@ -473,6 +540,10 @@ body {
 
 @media (max-width: 980px) {
   .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .comparison-grid {
     grid-template-columns: 1fr;
   }
 
