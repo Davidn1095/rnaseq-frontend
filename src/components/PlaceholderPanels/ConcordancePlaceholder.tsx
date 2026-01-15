@@ -33,10 +33,10 @@ export default function ConcordancePlaceholder({
         <circle cx="250" cy="70" r="6" fill="#3b82f6" />
         <circle cx="300" cy="60" r="6" fill="#2563eb" />
         <text x="40" y="185" fill="#64748b" fontSize="12">
-          logFC({leftDisease} vs Healthy) →
+          logFC({leftDisease}) →
         </text>
         <text x="15" y="110" fill="#64748b" fontSize="12" transform="rotate(-90 15 110)">
-          logFC({rightDisease} vs Healthy)
+          logFC({rightDisease})
         </text>
       </svg>
     </div>

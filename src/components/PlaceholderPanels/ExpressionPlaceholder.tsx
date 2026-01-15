@@ -16,8 +16,8 @@ export default function ExpressionPlaceholder({
   genes,
 }: ExpressionPlaceholderProps) {
   const groupLabel = mode === "single"
-    ? `Healthy vs ${disease}`
-    : `Healthy vs ${leftDisease} vs ${rightDisease}`;
+    ? `Healthy, ${disease}`
+    : `Healthy, ${leftDisease}, ${rightDisease}`;
 
   const previewGenes = genes.slice(0, 6);
 

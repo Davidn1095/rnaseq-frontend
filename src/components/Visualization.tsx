@@ -6,6 +6,9 @@ import CompositionPlaceholder from "./PlaceholderPanels/CompositionPlaceholder";
 import VolcanoPlaceholder from "./PlaceholderPanels/VolcanoPlaceholder";
 import OverlapPlaceholder from "./PlaceholderPanels/OverlapPlaceholder";
 import ViolinPlaceholder from "./PlaceholderPanels/ViolinPlaceholder";
+import ExpressionPlaceholder from "./PlaceholderPanels/ExpressionPlaceholder";
+import ConcordancePlaceholder from "./PlaceholderPanels/ConcordancePlaceholder";
+import ErrorBoundary from "./ErrorBoundary";
 
 type VisualizationProps = {
   manifest: Manifest | null;
@@ -40,8 +43,9 @@ export default function Visualization({
   markerGenes,
   markersLoading,
 }: VisualizationProps) {
-  const [tab, setTab] = useState<"umap" | "dot" | "composition" | "volcano" | "overlap" | "violin">("umap");
-  const [contrast, setContrast] = useState<"left" | "right">("left");
+  const [tab, setTab] = useState<
+    "umap" | "expression" | "dot" | "composition" | "volcano" | "overlap" | "violin" | "concordance"
+  >("umap");
   const [groupBy, setGroupBy] = useState<"disease" | "accession">("disease");
 
   useEffect(() => {
@@ -49,10 +53,6 @@ export default function Visualization({
       setTab("umap");
     }
   }, [mode, tab]);
-
-  useEffect(() => {
-    setContrast("left");
-  }, [leftDisease, rightDisease, mode]);
 
   const tabLabels = useMemo(() => {
     const base = [
@@ -142,73 +142,79 @@ export default function Visualization({
           ))}
         </div>
 
-        {tab === "umap" ? (
-          <UMAPPlaceholder
-            mode={mode}
-            selectedCellTypes={selectedCellTypes}
-            selectedAccessionCount={selectedAccessionCount}
-            disease={disease}
-            leftDisease={leftDisease}
-            rightDisease={rightDisease}
-          />
-        ) : null}
+        <ErrorBoundary fallbackTitle="Visualization error" fallbackMessage="Unable to render this panel.">
+          {tab === "umap" ? (
+            <UMAPPlaceholder
+              mode={mode}
+              selectedCellTypes={selectedCellTypes}
+              selectedAccessionCount={selectedAccessionCount}
+              disease={disease}
+              leftDisease={leftDisease}
+              rightDisease={rightDisease}
+            />
+          ) : null}
 
-        {tab === "dot" ? (
-          <DotPlotPlaceholder
-            mode={mode}
-            disease={disease}
-            leftDisease={leftDisease}
-            rightDisease={rightDisease}
-            contrast={contrast}
-            markerPanel={markerPanel}
-            markerPanels={markerPanels}
-            onMarkerPanelChange={onMarkerPanelChange}
-            onContrastChange={setContrast}
-            genes={markerGenes}
-            loadingGenes={markersLoading}
-          />
-        ) : null}
+          {tab === "dot" ? (
+            <DotPlotPlaceholder
+              mode={mode}
+              disease={disease}
+              leftDisease={leftDisease}
+              rightDisease={rightDisease}
+              markerPanel={markerPanel}
+              markerPanels={markerPanels}
+              onMarkerPanelChange={onMarkerPanelChange}
+              genes={markerGenes}
+              loadingGenes={markersLoading}
+            />
+          ) : null}
 
-        {tab === "expression" ? (
-          <ExpressionPlaceholder
-            mode={mode}
-            disease={disease}
-            leftDisease={leftDisease}
-            rightDisease={rightDisease}
-            genes={markerGenes}
-          />
-        ) : null}
+          {tab === "expression" ? (
+            markerGenes.length === 0 || !disease || (mode === "compare" && (!leftDisease || !rightDisease)) ? (
+              <div className="panel">
+                <div className="h3">Expression</div>
+                <div className="muted small">Expression: not computed yet</div>
+              </div>
+            ) : (
+              <ExpressionPlaceholder
+                mode={mode}
+                disease={disease}
+                leftDisease={leftDisease}
+                rightDisease={rightDisease}
+                genes={markerGenes}
+              />
+            )
+          ) : null}
 
-        {tab === "composition" ? (
-          <CompositionPlaceholder groupBy={groupBy} onGroupByChange={setGroupBy} />
-        ) : null}
+          {tab === "composition" ? (
+            <CompositionPlaceholder groupBy={groupBy} onGroupByChange={setGroupBy} />
+          ) : null}
 
-        {tab === "violin" ? (
-          <ViolinPlaceholder summaries={violinSummaries} />
-        ) : null}
+          {tab === "violin" ? (
+            <ViolinPlaceholder summaries={violinSummaries} />
+          ) : null}
 
-        {tab === "volcano" ? (
-          <VolcanoPlaceholder
-            mode={mode}
-            disease={disease}
-            leftDisease={leftDisease}
-            rightDisease={rightDisease}
-            contrast={contrast}
-            selectedCellTypes={selectedCellTypes}
-          />
-        ) : null}
+          {tab === "volcano" ? (
+            <VolcanoPlaceholder
+              mode={mode}
+              disease={disease}
+              leftDisease={leftDisease}
+              rightDisease={rightDisease}
+              selectedCellTypes={selectedCellTypes}
+            />
+          ) : null}
 
-        {tab === "concordance" && mode === "compare" ? (
-          <ConcordancePlaceholder
-            mode={mode}
-            leftDisease={leftDisease}
-            rightDisease={rightDisease}
-          />
-        ) : null}
+          {tab === "concordance" && mode === "compare" ? (
+            <ConcordancePlaceholder
+              mode={mode}
+              leftDisease={leftDisease}
+              rightDisease={rightDisease}
+            />
+          ) : null}
 
-        {tab === "overlap" && mode === "compare" ? (
-          <OverlapPlaceholder leftDisease={leftDisease} rightDisease={rightDisease} />
-        ) : null}
+          {tab === "overlap" && mode === "compare" ? (
+            <OverlapPlaceholder leftDisease={leftDisease} rightDisease={rightDisease} />
+          ) : null}
+        </ErrorBoundary>
       </div>
     </section>
   );
