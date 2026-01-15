@@ -5,13 +5,13 @@ import DotPlotPlaceholder from "./PlaceholderPanels/DotPlotPlaceholder";
 import CompositionPlaceholder from "./PlaceholderPanels/CompositionPlaceholder";
 import VolcanoPlaceholder from "./PlaceholderPanels/VolcanoPlaceholder";
 import OverlapPlaceholder from "./PlaceholderPanels/OverlapPlaceholder";
-import ExpressionPlaceholder from "./PlaceholderPanels/ExpressionPlaceholder";
-import ConcordancePlaceholder from "./PlaceholderPanels/ConcordancePlaceholder";
+import ViolinPlaceholder from "./PlaceholderPanels/ViolinPlaceholder";
 
 type VisualizationProps = {
   manifest: Manifest | null;
   isLoading: boolean;
   mode: Mode;
+  onModeChange: (mode: Mode) => void;
   disease: string;
   leftDisease: string;
   rightDisease: string;
@@ -28,6 +28,7 @@ export default function Visualization({
   manifest,
   isLoading,
   mode,
+  onModeChange,
   disease,
   leftDisease,
   rightDisease,
@@ -39,9 +40,7 @@ export default function Visualization({
   markerGenes,
   markersLoading,
 }: VisualizationProps) {
-  const [tab, setTab] = useState<
-    "umap" | "expression" | "dot" | "composition" | "volcano" | "concordance" | "overlap"
-  >("umap");
+  const [tab, setTab] = useState<"umap" | "dot" | "composition" | "volcano" | "overlap" | "violin">("umap");
   const [contrast, setContrast] = useState<"left" | "right">("left");
   const [groupBy, setGroupBy] = useState<"disease" | "accession">("disease");
 
@@ -61,13 +60,39 @@ export default function Visualization({
       { id: "expression", label: "Expression" },
       { id: "dot", label: "Dot plot" },
       { id: "composition", label: "Composition" },
-      { id: "volcano", label: "DE volcano (gene-level, per cell type)" },
+      { id: "violin", label: "Violin" },
+      { id: "volcano", label: "Volcano" },
     ];
     if (mode === "compare") {
       base.push({ id: "concordance", label: "Concordance" }, { id: "overlap", label: "Overlap" });
     }
     return base;
   }, [mode]);
+
+  const violinSummaries = useMemo(() => {
+    if (mode === "single") {
+      return [
+        {
+          label: "Healthy",
+          quantiles: { min: 0.2, q1: 0.6, median: 1.1, q3: 1.8, max: 2.6 },
+        },
+        {
+          label: disease,
+          quantiles: { min: 0.1, q1: 0.8, median: 1.4, q3: 2.1, max: 3.0 },
+        },
+      ];
+    }
+    return [
+      {
+        label: leftDisease,
+        quantiles: { min: 0.3, q1: 0.9, median: 1.5, q3: 2.2, max: 3.3 },
+      },
+      {
+        label: rightDisease,
+        quantiles: { min: 0.2, q1: 0.7, median: 1.2, q3: 1.9, max: 2.8 },
+      },
+    ];
+  }, [mode, disease, leftDisease, rightDisease]);
 
   if (!manifest || isLoading) {
     return (
@@ -88,6 +113,21 @@ export default function Visualization({
         <div className="row between">
           <div className="h2">Visualization</div>
           <span className="pill">{tab}</span>
+        </div>
+
+        <div className="tabs">
+          <button
+            className={`tab ${mode === "single" ? "on" : ""}`}
+            onClick={() => onModeChange("single")}
+          >
+            Single disease
+          </button>
+          <button
+            className={`tab ${mode === "compare" ? "on" : ""}`}
+            onClick={() => onModeChange("compare")}
+          >
+            Comparison
+          </button>
         </div>
 
         <div className="tabs">
@@ -141,6 +181,10 @@ export default function Visualization({
 
         {tab === "composition" ? (
           <CompositionPlaceholder groupBy={groupBy} onGroupByChange={setGroupBy} />
+        ) : null}
+
+        {tab === "violin" ? (
+          <ViolinPlaceholder summaries={violinSummaries} />
         ) : null}
 
         {tab === "volcano" ? (

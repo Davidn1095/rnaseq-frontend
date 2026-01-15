@@ -231,6 +231,7 @@ export default function App() {
           manifest={manifest}
           isLoading={isLoading}
           mode={mode}
+          onModeChange={setMode}
           disease={disease}
           leftDisease={leftDisease}
           rightDisease={rightDisease}
