@@ -60,7 +60,7 @@ body {
 
 .grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(360px, 380px) 1fr;
   gap: 16px;
   margin-top: 16px;
 }
