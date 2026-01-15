@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useRef } from "react";
 import type { Mode } from "../../lib/types";
 
 type UMAPPlaceholderProps = {
@@ -18,6 +19,67 @@ export default function UMAPPlaceholder({
   rightDisease,
 }: UMAPPlaceholderProps) {
   const cohortLabel = mode === "single" ? disease : `${leftDisease} + ${rightDisease}`;
+  const plotRef = useRef<HTMLDivElement | null>(null);
+  const clusterTraces = useMemo(() => {
+    const totalPoints = Math.max(320, Math.min(1600, selectedAccessionCount * 40));
+    const pointsPerCluster = Math.max(80, Math.floor(totalPoints / 3));
+    const clusters = [
+      { label: "Disease", color: "#60a5fa", center: [-2.2, 1.6] },
+      { label: "Healthy", color: "#93c5fd", center: [1.4, 2.3] },
+      { label: "Other", color: "#cbd5f5", center: [0.8, -1.8] },
+    ];
+
+    return clusters.map((cluster) => {
+      const x = Array.from({ length: pointsPerCluster }, (_, index) => {
+        const jitter = (index % 7) * 0.05;
+        return cluster.center[0] + Math.cos(index / 10) * 1.4 + jitter;
+      });
+      const y = Array.from({ length: pointsPerCluster }, (_, index) => {
+        const jitter = ((index * 13) % 11) * 0.04;
+        return cluster.center[1] + Math.sin(index / 12) * 1.2 + jitter;
+      });
+      return {
+        type: "scattergl",
+        mode: "markers",
+        name: cluster.label,
+        x,
+        y,
+        marker: {
+          size: 5,
+          color: cluster.color,
+          opacity: 0.85,
+        },
+      };
+    });
+  }, [selectedAccessionCount]);
+  const layout = useMemo(
+    () => ({
+      margin: { l: 40, r: 20, t: 10, b: 40 },
+      paper_bgcolor: "rgba(0,0,0,0)",
+      plot_bgcolor: "rgba(0,0,0,0)",
+      xaxis: { title: "UMAP 1", zeroline: false, showgrid: false },
+      yaxis: { title: "UMAP 2", zeroline: false, showgrid: false },
+      showlegend: true,
+      legend: { orientation: "h", x: 0, y: -0.2 },
+    }),
+    [],
+  );
+  const config = useMemo(() => ({ displayModeBar: false, responsive: true }), []);
+
+  useEffect(() => {
+    if (!plotRef.current || !window.Plotly) return;
+    window.Plotly.react(plotRef.current, clusterTraces, layout, config);
+  }, [clusterTraces, layout, config]);
+
+  useEffect(() => {
+    if (!plotRef.current || !window.Plotly) return;
+    const handleResize = () => {
+      if (!plotRef.current) return;
+      window.Plotly.Plots.resize(plotRef.current);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   return (
     <div className="panel">
@@ -34,16 +96,7 @@ export default function UMAPPlaceholder({
         </div>
       </div>
 
-      <svg className="placeholder-svg" viewBox="0 0 420 240" aria-hidden="true">
-        <rect x="30" y="20" width="360" height="180" rx="12" fill="#f8fafc" stroke="#e2e8f0" />
-        <line x1="60" y1="180" x2="340" y2="180" stroke="#94a3b8" strokeWidth="2" />
-        <line x1="60" y1="60" x2="60" y2="180" stroke="#94a3b8" strokeWidth="2" />
-        <text x="180" y="215" fill="#64748b" fontSize="12">UMAP 1</text>
-        <text x="15" y="120" fill="#64748b" fontSize="12" transform="rotate(-90 15 120)">UMAP 2</text>
-        <circle cx="320" cy="70" r="6" fill="#cbd5f5" />
-        <circle cx="350" cy="90" r="6" fill="#93c5fd" />
-        <circle cx="300" cy="110" r="6" fill="#60a5fa" />
-      </svg>
+      <div className="plot-frame" ref={plotRef} />
     </div>
   );
 }

@@ -27,3 +27,18 @@ export type MarkersResponse = {
   ok: boolean;
   genes: string[];
 };
+
+export type ViolinSummary = {
+  label: string;
+  histogram?: {
+    bins: number[];
+    counts: number[];
+  };
+  quantiles?: {
+    min: number;
+    q1: number;
+    median: number;
+    q3: number;
+    max: number;
+  };
+};
