@@ -1,406 +1,257 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import "./App.css";
-
-type Mode = "single" | "compare";
-
-type AccRow = {
-  id: string;
-  disease: string;
-  platform: string;
-  donors: number;
-  cells: number;
-  tissue: string;
-};
-
-type Manifest = {
-  ok: boolean;
-  tissue: string;
-  diseases: string[];
-  accessions: AccRow[];
-  cell_types: string[];
-  marker_panels: Record<string, string[]>;
-};
-
-const DEFAULT_API_BASE = "https://rnaseq-backend-y654q6wo2q-ew.a.run.app";
-const ENV_API_BASE = import.meta.env.VITE_API_BASE_URL;
-const INITIAL_API_BASE = ENV_API_BASE && ENV_API_BASE.length > 0 ? ENV_API_BASE : DEFAULT_API_BASE;
-
-function uniqSorted(xs: string[]) {
-  return Array.from(new Set(xs)).sort();
-}
+import Header from "./components/Header";
+import AnalysisSetup from "./components/AnalysisSetup";
+import Visualization from "./components/Visualization";
+import SettingsModal from "./components/SettingsModal";
+import { DEFAULT_RESOLVED_BASE, fetchAccessions, fetchManifest, fetchMarkers } from "./lib/api";
+import { clearStoredApiBase, getStoredApiBase, setStoredApiBase } from "./lib/storage";
+import type { Accession, Manifest, Mode } from "./lib/types";
 
 export default function App() {
-  const [apiBase, setApiBase] = useState(INITIAL_API_BASE);
+  const storedBase = getStoredApiBase();
+  const [apiBase, setApiBase] = useState(storedBase ?? DEFAULT_RESOLVED_BASE);
   const [manifest, setManifest] = useState<Manifest | null>(null);
-  const [loadErr, setLoadErr] = useState<string | null>(null);
-
+  const [manifestStatus, setManifestStatus] = useState<"idle" | "loading" | "loaded" | "error">("idle");
+  const [backendReachable, setBackendReachable] = useState<boolean | null>(null);
+  const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("single");
-  const [cellType, setCellType] = useState("CD4 T cells");
+  const [cellType, setCellType] = useState("");
+  const [disease, setDisease] = useState("");
+  const [leftDisease, setLeftDisease] = useState("");
+  const [rightDisease, setRightDisease] = useState("");
+  const [accessionsByDisease, setAccessionsByDisease] = useState<Record<string, Accession[]>>({});
+  const [selectedSingleAcc, setSelectedSingleAcc] = useState<string[]>([]);
+  const [selectedLeftAcc, setSelectedLeftAcc] = useState<string[]>([]);
+  const [selectedRightAcc, setSelectedRightAcc] = useState<string[]>([]);
+  const [markerPanel, setMarkerPanel] = useState("default");
+  const [markerGenes, setMarkerGenes] = useState<string[]>([]);
+  const [markersLoading, setMarkersLoading] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const [diseaseA, setDiseaseA] = useState("SjS");
-  const [leftDisease, setLeftDisease] = useState("SjS");
-  const [rightDisease, setRightDisease] = useState("SLE");
+  const isLoading = manifestStatus !== "loaded";
 
-  const [diseaseAAcc, setDiseaseAAcc] = useState<string[]>([]);
-  const [leftAcc, setLeftAcc] = useState<string[]>([]);
-  const [rightAcc, setRightAcc] = useState<string[]>([]);
+  const markerPanels = useMemo(() => {
+    const panels = Object.keys(manifest?.marker_panels ?? {});
+    return panels.length > 0 ? panels : ["default"];
+  }, [manifest]);
 
-  const [vizTab, setVizTab] = useState<"umap" | "dot" | "comp" | "volcano" | "overlap">("umap");
-  const [contrast, setContrast] = useState<"left" | "right">("left");
-  const apiBaseDefaultLabel = ENV_API_BASE ? "VITE_API_BASE_URL" : "Cloud Run default";
+  const healthyIds = useMemo(() => {
+    return (accessionsByDisease.Healthy ?? []).map((row) => row.id);
+  }, [accessionsByDisease]);
 
-  async function loadManifest() {
-    setLoadErr(null);
-    setManifest(null);
-    try {
-      const res = await fetch(`${apiBase.replace(/\/+$/, "")}/atlas/manifest`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const js = (await res.json()) as Manifest;
-      if (!js.ok) throw new Error("manifest.ok=false");
-      setManifest(js);
-
-      // set defaults from manifest
-      if (js.cell_types?.length) setCellType(js.cell_types[0]);
-
-      const manifestDiseases = js.diseases ?? [];
-      const manifestNonHealthy = manifestDiseases.filter((d) => d !== "Healthy");
-      const defaultDiseaseA = manifestNonHealthy[0] ?? "Disease A";
-      const defaultLeft = manifestNonHealthy[0] ?? "Disease A";
-      const defaultRight = manifestNonHealthy[1] ?? defaultLeft;
-
-      const nextDiseaseA = manifestNonHealthy.includes(diseaseA) ? diseaseA : defaultDiseaseA;
-      const nextLeft = manifestNonHealthy.includes(leftDisease) ? leftDisease : defaultLeft;
-      const nextRight = manifestNonHealthy.includes(rightDisease) ? rightDisease : defaultRight;
-
-      setDiseaseA(nextDiseaseA);
-      setLeftDisease(nextLeft);
-      setRightDisease(nextRight);
-
-      // auto-select Healthy accessions
-      const healthy = js.accessions.filter((a) => a.disease === "Healthy").map((a) => a.id);
-
-      const diseaseIds = (d: string) => js.accessions.filter((a) => a.disease === d).map((a) => a.id);
-
-      // seed selections
-      setDiseaseAAcc(diseaseIds(nextDiseaseA));
-      setLeftAcc(diseaseIds(nextLeft));
-      setRightAcc(diseaseIds(nextRight));
-
-      // basic sanity checks
-      console.assert(healthy.length >= 1, "Expected at least one Healthy accession");
-    } catch (e: any) {
-      setLoadErr(String(e?.message ?? e));
+  const selectedAccessionCount = useMemo(() => {
+    const all = new Set<string>();
+    healthyIds.forEach((id) => all.add(id));
+    if (mode === "single") {
+      selectedSingleAcc.forEach((id) => all.add(id));
+    } else {
+      selectedLeftAcc.forEach((id) => all.add(id));
+      selectedRightAcc.forEach((id) => all.add(id));
     }
-  }
+    return all.size;
+  }, [healthyIds, mode, selectedSingleAcc, selectedLeftAcc, selectedRightAcc]);
 
-  const diseases = manifest?.diseases ?? ["Healthy", "SLE", "SjS", "RA"];
-  const nonHealthyDiseases = diseases.filter((d) => d !== "Healthy");
-  const accessions = manifest?.accessions ?? [];
-  const healthyAcc = useMemo(() => accessions.filter((a) => a.disease === "Healthy").map((a) => a.id), [accessions]);
+  const loadAccessionsForDisease = useCallback(
+    async (targetDisease: string, onSeedSelection?: (rows: Accession[]) => void) => {
+      if (!targetDisease) return;
+      try {
+        const response = await fetchAccessions(apiBase, targetDisease);
+        if (!response.ok) {
+          throw new Error("accessions.ok=false");
+        }
+        setAccessionsByDisease((prev) => ({ ...prev, [targetDisease]: response.accessions }));
+        if (onSeedSelection) {
+          onSeedSelection(response.accessions);
+        }
+      } catch (error) {
+        setErrorMessage(`Accessions fetch failed for ${targetDisease}: ${String((error as Error).message ?? error)}`);
+      }
+    },
+    [apiBase],
+  );
 
-  const idsForDisease = (d: string) => accessions.filter((a) => a.disease === d).map((a) => a.id);
+  const loadMarkersForPanel = useCallback(
+    async (panel: string) => {
+      setMarkersLoading(true);
+      try {
+        const response = await fetchMarkers(apiBase, panel);
+        if (!response.ok) {
+          throw new Error("markers.ok=false");
+        }
+        setMarkerGenes(response.genes);
+      } catch (error) {
+        setErrorMessage(`Markers fetch failed for ${panel}: ${String((error as Error).message ?? error)}`);
+      } finally {
+        setMarkersLoading(false);
+      }
+    },
+    [apiBase],
+  );
 
-  const selectedAcc = useMemo(() => {
-    if (mode === "single") return uniqSorted([...healthyAcc, ...diseaseAAcc]);
-    return uniqSorted([...healthyAcc, ...leftAcc, ...rightAcc]);
-  }, [mode, healthyAcc, diseaseAAcc, leftAcc, rightAcc]);
+  const loadManifest = useCallback(async () => {
+    setManifestStatus("loading");
+    setErrorMessage(null);
+    setManifest(null);
+    setAccessionsByDisease({});
+    setMarkerGenes([]);
+    try {
+      const response = await fetchManifest(apiBase);
+      if (!response.ok) {
+        throw new Error("manifest.ok=false");
+      }
+      setManifest(response);
+      setManifestStatus("loaded");
+      setBackendReachable(true);
+      setLastLoadedAt(new Date());
 
-  const contrastLabel = useMemo(() => {
-    if (mode === "single") return `${diseaseA} vs Healthy`;
-    return contrast === "left" ? `${leftDisease} vs Healthy` : `${rightDisease} vs Healthy`;
-  }, [mode, diseaseA, leftDisease, rightDisease, contrast]);
+      if (import.meta.env.DEV) {
+        console.assert(response.diseases.includes("Healthy"), "Manifest should include Healthy disease");
+      }
 
-  const setDiseaseAAndReset = (d: string) => {
-    setDiseaseA(d);
-    if (manifest) setDiseaseAAcc(idsForDisease(d));
+      const nonHealthy = response.diseases.filter((item) => item !== "Healthy");
+      const nextDisease = nonHealthy[0] ?? "";
+      const nextLeft = nonHealthy[0] ?? "";
+      const nextRight = nonHealthy[1] ?? nonHealthy[0] ?? "";
+      const resolvedDisease = nonHealthy.includes(disease) ? disease : nextDisease;
+      const resolvedLeft = nonHealthy.includes(leftDisease) ? leftDisease : nextLeft;
+      const resolvedRight = nonHealthy.includes(rightDisease) ? rightDisease : nextRight;
+
+      setCellType(response.cell_types[0] ?? "");
+      setDisease(resolvedDisease);
+      setLeftDisease(resolvedLeft);
+      setRightDisease(resolvedRight);
+
+      await loadAccessionsForDisease("Healthy");
+      await loadAccessionsForDisease(resolvedDisease, (rows) => {
+        setSelectedSingleAcc(rows.map((row) => row.id));
+      });
+      await loadAccessionsForDisease(resolvedLeft, (rows) => {
+        setSelectedLeftAcc(rows.map((row) => row.id));
+      });
+      await loadAccessionsForDisease(resolvedRight, (rows) => {
+        setSelectedRightAcc(rows.map((row) => row.id));
+      });
+
+      const panelKeys = Object.keys(response.marker_panels ?? {});
+      const defaultPanel = panelKeys.includes("default") ? "default" : panelKeys[0] ?? "default";
+      setMarkerPanel(defaultPanel);
+      await loadMarkersForPanel(defaultPanel);
+    } catch (error) {
+      setManifestStatus("error");
+      setBackendReachable(false);
+      setErrorMessage(`Manifest fetch failed: ${String((error as Error).message ?? error)}`);
+    }
+  }, [apiBase, disease, leftDisease, rightDisease, loadAccessionsForDisease, loadMarkersForPanel]);
+
+  useEffect(() => {
+    loadManifest();
+  }, [apiBase]);
+
+  const handleDiseaseChange = (nextDisease: string) => {
+    setDisease(nextDisease);
+    loadAccessionsForDisease(nextDisease, (rows) => setSelectedSingleAcc(rows.map((row) => row.id)));
   };
-  const setLeftDiseaseAndReset = (d: string) => {
-    setLeftDisease(d);
-    if (manifest) setLeftAcc(idsForDisease(d));
-  };
-  const setRightDiseaseAndReset = (d: string) => {
-    setRightDisease(d);
-    if (manifest) setRightAcc(idsForDisease(d));
+
+  const handleLeftDiseaseChange = (nextDisease: string) => {
+    setLeftDisease(nextDisease);
+    loadAccessionsForDisease(nextDisease, (rows) => setSelectedLeftAcc(rows.map((row) => row.id)));
   };
 
-  function AccessionList({
-    title,
-    disease,
-    selected,
-    onChange,
-  }: {
-    title: string;
-    disease: string;
-    selected: string[];
-    onChange: (xs: string[]) => void;
-  }) {
-    const rows = accessions.filter((a) => a.disease === disease);
-    const ids = rows.map((r) => r.id);
-    const allChecked = ids.length > 0 && ids.every((id) => selected.includes(id));
+  const handleRightDiseaseChange = (nextDisease: string) => {
+    setRightDisease(nextDisease);
+    loadAccessionsForDisease(nextDisease, (rows) => setSelectedRightAcc(rows.map((row) => row.id)));
+  };
 
-    return (
-      <div className="card">
-        <div className="row between">
-          <div>
-            <div className="h3">{title}</div>
-            <div className="muted small">{disease} · {rows.length} accessions</div>
-          </div>
-          <button className="btn ghost" onClick={() => onChange(allChecked ? [] : ids)} disabled={ids.length === 0}>
-            {allChecked ? "Clear" : "Select all"}
-          </button>
-        </div>
+  const handleMarkerPanelChange = (panel: string) => {
+    setMarkerPanel(panel);
+    loadMarkersForPanel(panel);
+  };
 
-        {rows.length === 0 ? (
-          <div className="box muted">No accessions available.</div>
-        ) : (
-          <div className="list">
-            {rows.map((a) => {
-              const checked = selected.includes(a.id);
-              return (
-                <label key={a.id} className="item">
-                  <span className="row gap">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => {
-                        if (e.target.checked) onChange([...selected, a.id]);
-                        else onChange(selected.filter((x) => x !== a.id));
-                      }}
-                    />
-                    <span className="mono">{a.id}</span>
-                  </span>
-                  <span className="muted small">{a.donors} donors · {a.cells.toLocaleString()} cells</span>
-                </label>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
-  }
+  const handleSaveApiBase = (nextBase: string) => {
+    setStoredApiBase(nextBase);
+    setApiBase(nextBase);
+    setSettingsOpen(false);
+  };
 
-  function Placeholder({ title, lines }: { title: string; lines: string[] }) {
-    return (
-      <div className="card">
-        <div className="h3">{title}</div>
-        <ul className="ul">
-          {lines.map((l, i) => (
-            <li key={i} className="muted small">{l}</li>
-          ))}
-        </ul>
-        <div className="placeholder">Placeholder</div>
-      </div>
-    );
-  }
+  const handleResetApiBase = () => {
+    clearStoredApiBase();
+    setApiBase(DEFAULT_RESOLVED_BASE);
+    setSettingsOpen(false);
+  };
+
+  const lastLoadedLabel = lastLoadedAt
+    ? lastLoadedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : "—";
 
   return (
     <div className="page">
-      <header className="header">
-        <div>
-          <div className="title">Autoimmune Public Atlas</div>
-          <div className="muted">PBMC-only · text-only placeholders</div>
-        </div>
+      <Header manifest={manifest} onReload={loadManifest} onOpenSettings={() => setSettingsOpen(true)} />
 
-        <div className="api">
-          <div className="api-field">
-            <input
-              className="input mono"
-              value={apiBase}
-              onChange={(e) => setApiBase(e.target.value)}
-              placeholder="https://rnaseq-backend-xxxxx.europe-west1.run.app"
-            />
-            <div className="muted small">Default: {apiBaseDefaultLabel} (editable)</div>
-          </div>
-          <button className="btn" onClick={loadManifest}>Load manifest</button>
+      {errorMessage ? (
+        <div className="error-banner">
+          <strong>Errors:</strong> {errorMessage}
         </div>
-      </header>
+      ) : null}
 
-      {loadErr ? <div className="err">Manifest load error: {loadErr}</div> : null}
-      {manifest ? <div className="ok">Loaded {manifest.accessions.length} accessions from backend.</div> : null}
+      <div className="status-strip">
+        <span className={`status-dot ${backendReachable ? "ok" : backendReachable === false ? "bad" : "idle"}`} />
+        <span className="status-label">
+          Backend {backendReachable ? "reachable" : backendReachable === false ? "unreachable" : "status unknown"}
+        </span>
+        <span className="status-sep" />
+        <span className="muted small">Last manifest load: {lastLoadedLabel}</span>
+      </div>
 
       <div className="grid">
-        <section className="col">
-          <div className="card">
-            <div className="row between">
-              <div className="h2">Analysis setup</div>
-              <span className="pill">{mode === "single" ? "Single disease" : "Comparison"}</span>
-            </div>
-
-            <div className="row gap top">
-              <button className={`btn ${mode === "single" ? "" : "ghost"}`} onClick={() => setMode("single")}>
-                Single disease
-              </button>
-              <button className={`btn ${mode === "compare" ? "" : "ghost"}`} onClick={() => setMode("compare")}>
-                Comparison
-              </button>
-            </div>
-
-            <div className="sep" />
-
-            <div className="card sub">
-              <div className="row between">
-                <div>
-                  <div className="h3">Healthy controls</div>
-                  <div className="muted small">Auto-selected</div>
-                </div>
-                <span className="pill">{healthyAcc.length}</span>
-              </div>
-              <div className="chips">
-                {healthyAcc.map((id) => (
-                  <span key={id} className="chip mono">{id}</span>
-                ))}
-              </div>
-            </div>
-
-            <div className="row gap top">
-              <div className="field">
-                <label className="muted small">Cell type</label>
-                <select className="select" value={cellType} onChange={(e) => setCellType(e.target.value)}>
-                  {(manifest?.cell_types ?? ["CD4 T cells"]).map((ct) => (
-                    <option key={ct} value={ct}>{ct}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {mode === "single" ? (
-              <>
-                <div className="row gap top">
-                  <div className="field">
-                    <label className="muted small">Disease</label>
-                    <select className="select" value={diseaseA} onChange={(e) => setDiseaseAAndReset(e.target.value)}>
-                      {nonHealthyDiseases.map((d) => (
-                        <option key={d} value={d}>{d}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label className="muted small">Contrast</label>
-                    <div className="pill big">{diseaseA} vs Healthy</div>
-                  </div>
-                </div>
-
-                <AccessionList title={`${diseaseA} accessions`} disease={diseaseA} selected={diseaseAAcc} onChange={setDiseaseAAcc} />
-
-                <div className="row between">
-                  <button className="btn">Compute Disease vs Healthy</button>
-                  <button className="btn ghost">View top genes</button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="row gap top">
-                  <div className="field">
-                    <label className="muted small">Left disease</label>
-                    <select className="select" value={leftDisease} onChange={(e) => setLeftDiseaseAndReset(e.target.value)}>
-                      {nonHealthyDiseases.filter((d) => d !== rightDisease).map((d) => (
-                        <option key={d} value={d}>{d}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label className="muted small">Right disease</label>
-                    <select className="select" value={rightDisease} onChange={(e) => setRightDiseaseAndReset(e.target.value)}>
-                      {nonHealthyDiseases.filter((d) => d !== leftDisease).map((d) => (
-                        <option key={d} value={d}>{d}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="row gap">
-                  <span className="pill big">{leftDisease} vs Healthy</span>
-                  <span className="pill big">{rightDisease} vs Healthy</span>
-                </div>
-
-                <div className="row gap top">
-                  <AccessionList title={`${leftDisease} accessions`} disease={leftDisease} selected={leftAcc} onChange={setLeftAcc} />
-                  <AccessionList title={`${rightDisease} accessions`} disease={rightDisease} selected={rightAcc} onChange={setRightAcc} />
-                </div>
-
-                <div className="row between">
-                  <button className="btn">Compute overlap</button>
-                  <button className="btn ghost">View lists</button>
-                </div>
-              </>
-            )}
-
-            <div className="sep" />
-            <div className="muted small">Selected accessions in session: <span className="mono">{selectedAcc.length}</span></div>
-          </div>
-        </section>
-
-        <section className="col">
-          <div className="card">
-            <div className="row between">
-              <div className="h2">Visualization</div>
-              <span className="pill">{vizTab}</span>
-            </div>
-
-            {mode === "compare" ? (
-              <div className="row gap top">
-                <div className="field">
-                  <label className="muted small">Contrast for Dot plot and Volcano</label>
-                  <select className="select" value={contrast} onChange={(e) => setContrast(e.target.value as any)}>
-                    <option value="left">{leftDisease} vs Healthy</option>
-                    <option value="right">{rightDisease} vs Healthy</option>
-                  </select>
-                </div>
-              </div>
-            ) : null}
-
-            <div className="tabs">
-              <button className={`tab ${vizTab === "umap" ? "on" : ""}`} onClick={() => setVizTab("umap")}>UMAP</button>
-              <button className={`tab ${vizTab === "dot" ? "on" : ""}`} onClick={() => setVizTab("dot")}>Dot plot</button>
-              <button className={`tab ${vizTab === "comp" ? "on" : ""}`} onClick={() => setVizTab("comp")}>Composition</button>
-              <button className={`tab ${vizTab === "volcano" ? "on" : ""}`} onClick={() => setVizTab("volcano")}>Volcano plot</button>
-              {mode === "compare" ? (
-                <button className={`tab ${vizTab === "overlap" ? "on" : ""}`} onClick={() => setVizTab("overlap")}>Overlap</button>
-              ) : null}
-            </div>
-
-            {vizTab === "umap" ? (
-              <Placeholder title="UMAP" lines={[
-                `Cell type: ${cellType}`,
-                `Selected accessions: ${selectedAcc.length}`,
-                "Color options: disease, accession, donor, cell type",
-              ]} />
-            ) : null}
-
-            {vizTab === "dot" ? (
-              <Placeholder title="Dot plot" lines={[
-                "Axes: genes on x, cell types on y",
-                "Size: percent expressed",
-                `Color: log fold change for ${contrastLabel}`,
-                "Gene panel: from backend manifest marker_panels.default",
-              ]} />
-            ) : null}
-
-            {vizTab === "comp" ? (
-              <Placeholder title="Composition" lines={[
-                "Cell type composition for selected cohort",
-                "Option: group by disease or accession",
-              ]} />
-            ) : null}
-
-            {vizTab === "volcano" ? (
-              <Placeholder title="Volcano plot" lines={[
-                "Axes: log fold change on x, -log10 adjusted p-value on y",
-                `Contrast: ${contrastLabel}`,
-                `Cell type: ${cellType}`,
-              ]} />
-            ) : null}
-
-            {vizTab === "overlap" && mode === "compare" ? (
-              <Placeholder title="Overlap" lines={[
-                `Significant genes: ${leftDisease} vs Healthy and ${rightDisease} vs Healthy`,
-                "Show shared, left-only, right-only sets",
-                "Report Jaccard similarity",
-              ]} />
-            ) : null}
-          </div>
-        </section>
+        <AnalysisSetup
+          manifest={manifest}
+          isLoading={isLoading}
+          mode={mode}
+          onModeChange={setMode}
+          cellType={cellType}
+          onCellTypeChange={setCellType}
+          disease={disease}
+          onDiseaseChange={handleDiseaseChange}
+          leftDisease={leftDisease}
+          rightDisease={rightDisease}
+          onLeftDiseaseChange={handleLeftDiseaseChange}
+          onRightDiseaseChange={handleRightDiseaseChange}
+          accessionsByDisease={accessionsByDisease}
+          selectedSingleAcc={selectedSingleAcc}
+          onSelectedSingleAccChange={setSelectedSingleAcc}
+          selectedLeftAcc={selectedLeftAcc}
+          onSelectedLeftAccChange={setSelectedLeftAcc}
+          selectedRightAcc={selectedRightAcc}
+          onSelectedRightAccChange={setSelectedRightAcc}
+          totalSelected={selectedAccessionCount}
+        />
+        <Visualization
+          manifest={manifest}
+          isLoading={isLoading}
+          mode={mode}
+          disease={disease}
+          leftDisease={leftDisease}
+          rightDisease={rightDisease}
+          cellType={cellType}
+          selectedAccessionCount={selectedAccessionCount}
+          markerPanels={markerPanels}
+          markerPanel={markerPanel}
+          onMarkerPanelChange={handleMarkerPanelChange}
+          markerGenes={markerGenes}
+          markersLoading={markersLoading}
+        />
       </div>
+
+      <SettingsModal
+        isOpen={settingsOpen}
+        apiBase={apiBase}
+        defaultApiBase={DEFAULT_RESOLVED_BASE}
+        onClose={() => setSettingsOpen(false)}
+        onSave={handleSaveApiBase}
+        onReset={handleResetApiBase}
+      />
     </div>
   );
 }
