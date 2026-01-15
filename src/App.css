@@ -26,7 +26,7 @@ body {
   width: 100%;
   margin: 0 auto;
   padding: 16px;
-  max-width: 1400px;
+  max-width: 1600px;
 }
 
 .header {
@@ -61,8 +61,9 @@ body {
 
 .grid {
   display: grid;
-  grid-template-columns: minmax(360px, 420px) minmax(0, 1fr);
-  gap: 20px;
+  grid-template-columns: minmax(420px, 480px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
   margin-top: 16px;
 }
 
