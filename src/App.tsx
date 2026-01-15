@@ -151,17 +151,26 @@ export default function App() {
 
   const handleDiseaseChange = (nextDisease: string) => {
     setDisease(nextDisease);
-    loadAccessionsForDisease(nextDisease, (rows) => setSelectedSingleAcc(rows.map((row) => row.id)));
+    loadAccessionsForDisease(nextDisease, (rows) => {
+      const rowIds = new Set(rows.map((row) => row.id));
+      setSelectedSingleAcc((prev) => prev.filter((id) => rowIds.has(id)));
+    });
   };
 
   const handleLeftDiseaseChange = (nextDisease: string) => {
     setLeftDisease(nextDisease);
-    loadAccessionsForDisease(nextDisease, (rows) => setSelectedLeftAcc(rows.map((row) => row.id)));
+    loadAccessionsForDisease(nextDisease, (rows) => {
+      const rowIds = new Set(rows.map((row) => row.id));
+      setSelectedLeftAcc((prev) => prev.filter((id) => rowIds.has(id)));
+    });
   };
 
   const handleRightDiseaseChange = (nextDisease: string) => {
     setRightDisease(nextDisease);
-    loadAccessionsForDisease(nextDisease, (rows) => setSelectedRightAcc(rows.map((row) => row.id)));
+    loadAccessionsForDisease(nextDisease, (rows) => {
+      const rowIds = new Set(rows.map((row) => row.id));
+      setSelectedRightAcc((prev) => prev.filter((id) => rowIds.has(id)));
+    });
   };
 
   const handleMarkerPanelChange = (panel: string) => {
