@@ -108,12 +108,14 @@ export default function AnalysisSetup({
                 </div>
               </div>
 
-              <div className="row gap">
-                <div className="field">
-                  <label className="muted small">Contrast</label>
-                  <div className="pill big subtle">{disease} vs Healthy</div>
-                </div>
-              </div>
+              <AccessionPicker
+                title={`${disease} accessions`}
+                description={`${disease} · ${(accessionsByDisease[disease] ?? []).length} accessions`}
+                accessions={accessionsByDisease[disease] ?? []}
+                selected={selectedSingleAcc}
+                onChange={onSelectedSingleAccChange}
+                isLoading={isLoading}
+              />
 
               <div className="row gap">
                 <div className="field">
@@ -171,15 +173,6 @@ export default function AnalysisSetup({
                 </div>
               </div>
 
-              <AccessionPicker
-                title={`${disease} accessions`}
-                description={`${disease} · ${(accessionsByDisease[disease] ?? []).length} accessions`}
-                accessions={accessionsByDisease[disease] ?? []}
-                selected={selectedSingleAcc}
-                onChange={onSelectedSingleAccChange}
-                isLoading={isLoading}
-              />
-
               <div className="row">
                 <button className="btn" disabled>Compute disease vs healthy</button>
               </div>
@@ -199,10 +192,6 @@ export default function AnalysisSetup({
                         ))}
                       </select>
                     )}
-                  </div>
-                  <div className="field">
-                    <label className="muted small">Contrast</label>
-                    <div className="pill big subtle">{leftDisease} vs Healthy</div>
                   </div>
                   <AccessionPicker
                     title={`${leftDisease} accessions`}
@@ -225,10 +214,6 @@ export default function AnalysisSetup({
                         ))}
                       </select>
                     )}
-                  </div>
-                  <div className="field">
-                    <label className="muted small">Contrast</label>
-                    <div className="pill big subtle">{rightDisease} vs Healthy</div>
                   </div>
                   <AccessionPicker
                     title={`${rightDisease} accessions`}

@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import type { Mode } from "../../lib/types";
 
 type DotPlotPlaceholderProps = {
@@ -6,11 +5,9 @@ type DotPlotPlaceholderProps = {
   disease: string;
   leftDisease: string;
   rightDisease: string;
-  contrast: "left" | "right";
   markerPanel: string;
   markerPanels: string[];
   onMarkerPanelChange: (panel: string) => void;
-  onContrastChange: (next: "left" | "right") => void;
   genes: string[];
   loadingGenes: boolean;
 };
@@ -20,20 +17,14 @@ export default function DotPlotPlaceholder({
   disease,
   leftDisease,
   rightDisease,
-  contrast,
   markerPanel,
   markerPanels,
   onMarkerPanelChange,
-  onContrastChange,
   genes,
   loadingGenes,
 }: DotPlotPlaceholderProps) {
-  const contrastLabel = useMemo(() => {
-    if (mode === "single") return `${disease} vs Healthy`;
-    return contrast === "left" ? `${leftDisease} vs Healthy` : `${rightDisease} vs Healthy`;
-  }, [mode, disease, leftDisease, rightDisease, contrast]);
-
   const previewGenes = genes.slice(0, 20);
+  const diseaseLabel = mode === "single" ? disease : `${leftDisease} and ${rightDisease}`;
 
   return (
     <div className="panel">
@@ -42,21 +33,8 @@ export default function DotPlotPlaceholder({
           <div className="h3">Dot plot</div>
           <div className="muted small">Axes: genes × cell types</div>
           <div className="muted small">Dot size: % cells expressing</div>
-          <div className="muted small">Color: mean expression or logFC for {contrastLabel}</div>
+          <div className="muted small">Color: mean expression or logFC ({diseaseLabel})</div>
         </div>
-        {mode === "compare" ? (
-          <div className="field">
-            <label className="muted small">Contrast</label>
-            <select
-              className="select"
-              value={contrast}
-              onChange={(event) => onContrastChange(event.target.value as "left" | "right")}
-            >
-              <option value="left">{leftDisease} vs Healthy</option>
-              <option value="right">{rightDisease} vs Healthy</option>
-            </select>
-          </div>
-        ) : null}
       </div>
 
       <div className="row gap top">
