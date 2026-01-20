@@ -13,7 +13,6 @@ type AnalysisSetupProps = {
   rightDisease: string;
   onLeftDiseaseChange: (disease: string) => void;
   onRightDiseaseChange: (disease: string) => void;
-  cohortAccessionCount: number;
 };
 
 export default function AnalysisSetup({
@@ -29,7 +28,6 @@ export default function AnalysisSetup({
   rightDisease,
   onLeftDiseaseChange,
   onRightDiseaseChange,
-  cohortAccessionCount,
 }: AnalysisSetupProps) {
   const diseases = manifest?.diseases ?? [];
   const nonHealthyDiseases = diseases.filter((item) => item !== "Healthy");
@@ -190,30 +188,9 @@ export default function AnalysisSetup({
                           </div>
                         ))}
                       </div>
-                      <div className="chips">
-                        {selectedCellTypes.length > 0 ? (
-                          selectedCellTypes.map((item) => (
-                            <button
-                              key={item}
-                              type="button"
-                              className="chip removable"
-                              onClick={() => handleToggleCellType(item)}
-                            >
-                              {item}
-                              <span aria-hidden="true">×</span>
-                            </button>
-                          ))
-                        ) : (
-                          <span className="muted small">No cell types selected.</span>
-                        )}
-                      </div>
                     </div>
                   )}
                 </div>
-              </div>
-
-              <div className="row">
-                <button className="btn" disabled>Compute disease vs healthy</button>
               </div>
             </>
           ) : (
@@ -292,23 +269,6 @@ export default function AnalysisSetup({
                           </div>
                         ))}
                       </div>
-                      <div className="chips">
-                        {selectedCellTypes.length > 0 ? (
-                          selectedCellTypes.map((item) => (
-                            <button
-                              key={item}
-                              type="button"
-                              className="chip removable"
-                              onClick={() => handleToggleCellType(item)}
-                            >
-                              {item}
-                              <span aria-hidden="true">×</span>
-                            </button>
-                          ))
-                        ) : (
-                          <span className="muted small">No cell types selected.</span>
-                        )}
-                      </div>
                     </div>
                   )}
                 </div>
@@ -316,21 +276,10 @@ export default function AnalysisSetup({
 
               <div className="row between comparison-actions">
                 <button className="btn" disabled>Compute overlap</button>
-                <div className="muted small">
-                  Accessions in cohort: <span className="mono">{cohortAccessionCount}</span>
-                </div>
               </div>
             </>
           )}
         </div>
-        {mode === "single" ? (
-          <>
-            <div className="sep" />
-            <div className="muted small">
-              Accessions in cohort: <span className="mono">{cohortAccessionCount}</span>
-            </div>
-          </>
-        ) : null}
       </div>
     </section>
   );

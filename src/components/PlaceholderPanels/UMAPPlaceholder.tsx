@@ -7,7 +7,6 @@ import { getStoredApiBase } from "../../lib/storage";
 type UMAPPlaceholderProps = {
   mode: Mode;
   selectedCellTypes: string[];
-  cohortAccessionCount: number;
   disease: string;
   leftDisease: string;
   rightDisease: string;
@@ -16,7 +15,6 @@ type UMAPPlaceholderProps = {
 export default function UMAPPlaceholder({
   mode,
   selectedCellTypes,
-  cohortAccessionCount,
   disease,
   leftDisease,
   rightDisease,
@@ -105,7 +103,6 @@ export default function UMAPPlaceholder({
         <div>
           <div className="h3">UMAP</div>
           <div className="muted small">Cohort: {cohortLabel} · Cell types: {cellTypeLabel}</div>
-          <div className="muted small">Accessions in cohort: {cohortAccessionCount}</div>
           {error ? <div className="muted small">UMAP error: {error}</div> : null}
         </div>
         <div className="legend">

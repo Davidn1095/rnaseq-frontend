@@ -33,18 +33,6 @@ export default function App() {
     return panels.length > 0 ? panels : ["default"];
   }, [manifest]);
 
-  const cohortAccessionCount = useMemo(() => {
-    if (!manifest) return 0;
-    const counts = new Map<string, number>();
-    manifest.accessions?.forEach((acc) => {
-      counts.set(acc.disease, (counts.get(acc.disease) ?? 0) + 1);
-    });
-    const countFor = (d: string) => (d ? counts.get(d) ?? 0 : 0);
-    if (mode === "single") {
-      return countFor("Healthy") + countFor(disease);
-    }
-    return countFor(leftDisease) + countFor(rightDisease);
-  }, [manifest, mode, disease, leftDisease, rightDisease]);
 
   const loadMarkersForPanel = useCallback(
     async (panel: string) => {
@@ -177,7 +165,6 @@ export default function App() {
           rightDisease={rightDisease}
           onLeftDiseaseChange={handleLeftDiseaseChange}
           onRightDiseaseChange={handleRightDiseaseChange}
-          cohortAccessionCount={cohortAccessionCount}
         />
         <Visualization
           manifest={manifest}
@@ -188,7 +175,6 @@ export default function App() {
           leftDisease={leftDisease}
           rightDisease={rightDisease}
           selectedCellTypes={selectedCellTypes}
-          cohortAccessionCount={cohortAccessionCount}
           markerPanels={markerPanels}
           markerPanel={markerPanel}
           onMarkerPanelChange={handleMarkerPanelChange}

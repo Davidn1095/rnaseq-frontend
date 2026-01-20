@@ -19,7 +19,6 @@ type VisualizationProps = {
   leftDisease: string;
   rightDisease: string;
   selectedCellTypes: string[];
-  cohortAccessionCount: number;
   markerPanels: string[];
   markerPanel: string;
   onMarkerPanelChange: (panel: string) => void;
@@ -36,7 +35,6 @@ export default function Visualization({
   leftDisease,
   rightDisease,
   selectedCellTypes,
-  cohortAccessionCount,
   markerPanels,
   markerPanel,
   onMarkerPanelChange,
@@ -124,7 +122,6 @@ export default function Visualization({
             <UMAPPlaceholder
               mode={mode}
               selectedCellTypes={selectedCellTypes}
-              cohortAccessionCount={cohortAccessionCount}
               disease={disease}
               leftDisease={leftDisease}
               rightDisease={rightDisease}
