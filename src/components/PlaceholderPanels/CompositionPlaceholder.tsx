@@ -67,7 +67,11 @@ function classifyPopulation(label: string): string {
   return "Other";
 }
 
-export default function CompositionPlaceholder() {
+type CompositionPlaceholderProps = {
+  selectedCellTypes: string[];
+};
+
+export default function CompositionPlaceholder({ selectedCellTypes }: CompositionPlaceholderProps) {
   const apiBase = getStoredApiBase() ?? DEFAULT_RESOLVED_BASE;
   const [response, setResponse] = useState<CompositionResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -113,6 +117,10 @@ export default function CompositionPlaceholder() {
       return { traces: [], totals: {} };
     }
 
+    // Filter cell types based on selection (if any selected)
+    const filterCellTypes = selectedCellTypes.length > 0;
+    const selectedSet = new Set(selectedCellTypes);
+
     // Map and merge disease groups
     const mappedGroups = response.groups.map((group) => mapDiseaseLabel(group));
     const mergedIndex: Record<string, number> = {};
@@ -137,7 +145,7 @@ export default function CompositionPlaceholder() {
       });
     });
 
-    // Aggregate by population
+    // Aggregate by population (only including selected cell types if filter is active)
     const populations = Object.keys(POPULATION_COLORS);
     const populationCounts: Record<string, Record<string, number>> = {};
 
@@ -149,6 +157,9 @@ export default function CompositionPlaceholder() {
     });
 
     response.cell_types.forEach((cellType, cellIdx) => {
+      // Skip cell types not in selection (if filtering)
+      if (filterCellTypes && !selectedSet.has(cellType)) return;
+
       const population = classifyPopulation(cellType);
       mergedGroups.forEach((disease, diseaseIdx) => {
         populationCounts[population][disease] += mergedCounts[diseaseIdx][cellIdx];
@@ -198,7 +209,7 @@ export default function CompositionPlaceholder() {
       });
 
     return { traces: builtTraces, totals: diseaseTotals };
-  }, [response]);
+  }, [response, selectedCellTypes]);
 
   useEffect(() => {
     if (!plotRef.current || !window.Plotly || traces.length === 0) return;
@@ -222,7 +233,10 @@ export default function CompositionPlaceholder() {
       <div className="panel-header">
         <div>
           <div className="h3">Composition</div>
-          <div className="muted small">Cell population composition per disease (%)</div>
+          <div className="muted small">
+            Cell population composition per disease (%)
+            {selectedCellTypes.length > 0 ? ` — Filtered: ${selectedCellTypes.length} cell types` : " — All cell types"}
+          </div>
         </div>
       </div>
 
@@ -232,7 +246,7 @@ export default function CompositionPlaceholder() {
           {Object.entries(totals).map(([disease, total]) => (
             <div key={disease} className="composition-stat">
               <span className="composition-stat-label">{disease}</span>
-              <span className="composition-stat-value">{total.toLocaleString()} cells</span>
+              <span className="composition-stat-value">{(total as number).toLocaleString()} cells</span>
             </div>
           ))}
         </div>

@@ -93,7 +93,7 @@ export default function Visualization({
 
         <ErrorBoundary fallbackTitle="Visualization error" fallbackMessage="Unable to render this panel.">
           {tab === "composition" ? (
-            <CompositionPlaceholder />
+            <CompositionPlaceholder selectedCellTypes={selectedCellTypes} />
           ) : null}
 
           {tab === "violin" ? (

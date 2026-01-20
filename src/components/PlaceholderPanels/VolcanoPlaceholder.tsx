@@ -25,9 +25,8 @@ export default function VolcanoPlaceholder({
     () => (manifest?.diseases ?? []).filter((item) => item !== "Healthy"),
     [manifest],
   );
-  const cellTypes = useMemo(() => manifest?.cell_types ?? [], [manifest]);
   const [selectedDisease, setSelectedDisease] = useState(disease || diseases[0] || "");
-  const [selectedCellType, setSelectedCellType] = useState(selectedCellTypes[0] || cellTypes[0] || "");
+  const [selectedCellType, setSelectedCellType] = useState(selectedCellTypes[0] || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<DeResponse | null>(null);
@@ -42,24 +41,28 @@ export default function VolcanoPlaceholder({
     return value;
   };
 
+  // Sync disease selection
   useEffect(() => {
-    if (!selectedDisease && disease) {
+    if (disease && diseases.includes(disease)) {
       setSelectedDisease(disease);
+    } else if (diseases.length > 0 && !diseases.includes(selectedDisease)) {
+      setSelectedDisease(diseases[0]);
     }
-  }, [disease, selectedDisease]);
+  }, [disease, diseases]);
 
+  // Sync cell type selection from Analysis Setup
   useEffect(() => {
-    if (!selectedCellType && selectedCellTypes.length > 0) {
+    if (selectedCellTypes.length > 0) {
       setSelectedCellType(selectedCellTypes[0]);
     }
-  }, [selectedCellType, selectedCellTypes]);
+  }, [selectedCellTypes]);
 
   const handleFetch = async () => {
     if (!selectedDisease || !selectedCellType) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchDeByDisease(apiBase, selectedDisease, selectedCellType, 50, 0, 6);
+      const res = await fetchDeByDisease(apiBase, selectedDisease, selectedCellType, 500, 0, 6);
       if (!res.ok) {
         throw new Error(res.error ?? "Request failed");
       }
@@ -72,16 +75,12 @@ export default function VolcanoPlaceholder({
     }
   };
 
+  // Auto-fetch when selections change
   useEffect(() => {
     if (mode !== "single") return;
     if (!selectedDisease || !selectedCellType) return;
     handleFetch();
   }, [mode, selectedDisease, selectedCellType]);
-
-  const diseaseLabel = mode === "single"
-    ? mapDiseaseLabel(disease)
-    : `${mapDiseaseLabel(leftDisease)} and ${mapDiseaseLabel(rightDisease)}`;
-  const cellTypeLabel = selectedCellTypes.length > 0 ? selectedCellTypes.join(", ") : "None selected";
 
   const points = useMemo(() => {
     if (!response?.ok || !response.rows) return [];
@@ -99,10 +98,14 @@ export default function VolcanoPlaceholder({
     if (!plotRef.current || !window.Plotly || points.length === 0) return;
     const trace = {
       type: "scatter",
-      mode: "markers",
+      mode: "markers+text",
       x: points.map((p) => p.logfc),
       y: points.map((p) => p.neglog10),
       text: points.map((p) => p.gene),
+      textposition: "top center",
+      textfont: { size: 9, color: "#64748b" },
+      hovertext: points.map((p) => `${p.gene}<br>logFC: ${p.logfc.toFixed(3)}<br>-log10(padj): ${p.neglog10.toFixed(2)}`),
+      hoverinfo: "text",
       marker: {
         size: 8,
         color: points.map((p) => (p.logfc >= 0 ? "#ef4444" : "#3b82f6")),
@@ -110,26 +113,39 @@ export default function VolcanoPlaceholder({
       },
     };
     const layout = {
-      margin: { l: 60, r: 20, t: 10, b: 60 },
+      margin: { l: 60, r: 20, t: 30, b: 60 },
       height: 520,
-      xaxis: { title: "logFC" },
+      xaxis: { title: "logFC", zeroline: true, zerolinecolor: "#e2e8f0" },
       yaxis: { title: "-log10(padj)" },
+      shapes: [
+        { type: "line", x0: 0, x1: 0, y0: 0, y1: Math.max(...points.map(p => p.neglog10), 10), line: { color: "#cbd5e1", width: 1, dash: "dot" } },
+      ],
     };
     window.Plotly.react(plotRef.current, [trace], layout, { displayModeBar: false, responsive: true });
   }, [points]);
+
+  if (selectedCellTypes.length === 0) {
+    return (
+      <div className="panel">
+        <div className="panel-header">
+          <div>
+            <div className="h3">Volcano</div>
+            <div className="muted small">Select cell types in Analysis Setup to view differential expression</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="panel">
       <div className="panel-header">
         <div>
-          <div className="h3">DE volcano (gene-level, per cell type)</div>
+          <div className="h3">Volcano</div>
           <div className="muted small">
-            Computed from donor-level pseudobulk within the selected cell type.
+            Differential expression: Disease vs Healthy (pseudobulk)
           </div>
-          <div className="muted small">Diseases: {diseaseLabel}</div>
-          <div className="muted small">Cell types: {cellTypeLabel}</div>
         </div>
-        <div className="muted small">Disease vs Healthy only (single-disease mode).</div>
       </div>
 
       <div className="panel-controls">
@@ -142,7 +158,7 @@ export default function VolcanoPlaceholder({
           >
             {diseases.map((item) => (
               <option key={item} value={item}>
-                {item}
+                {mapDiseaseLabel(item)}
               </option>
             ))}
           </select>
@@ -153,77 +169,23 @@ export default function VolcanoPlaceholder({
             value={selectedCellType}
             onChange={(event) => setSelectedCellType(event.target.value)}
           >
-            {cellTypes.map((item) => (
+            {selectedCellTypes.map((item) => (
               <option key={item} value={item}>
                 {item}
               </option>
             ))}
           </select>
         </label>
-        <button className="btn" disabled={loading || mode !== "single"} onClick={handleFetch}>
-          {loading ? "Loading…" : "Load results"}
-        </button>
       </div>
 
+      {loading ? <div className="muted small" style={{ marginTop: 12 }}>Loading...</div> : null}
       {error ? <div className="error-banner">{error}</div> : null}
 
-      {response?.ok && response.rows ? (
+      {response?.ok && response.rows && points.length > 0 ? (
         <div className="plot-frame large" ref={plotRef} />
+      ) : !loading && !error ? (
+        <div className="muted small" style={{ marginTop: 12 }}>No data available for this selection</div>
       ) : null}
-
-      {response?.ok && response.top_up && response.top_down ? (
-        <div className="panel-grid">
-          <div>
-            <div className="h4">Top up</div>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Gene</th>
-                  <th>logFC</th>
-                  <th>Groups</th>
-                </tr>
-              </thead>
-              <tbody>
-                {response.top_up.map((row) => (
-                  <tr key={`up-${row.gene}`}>
-                    <td>{row.gene}</td>
-                    <td>{row.logfc.toFixed(3)}</td>
-                    <td>{Array.isArray(row.groups) && row.groups.length ? row.groups.join(", ") : "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div>
-            <div className="h4">Top down</div>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Gene</th>
-                  <th>logFC</th>
-                  <th>Groups</th>
-                </tr>
-              </thead>
-              <tbody>
-                {response.top_down.map((row) => (
-                  <tr key={`down-${row.gene}`}>
-                    <td>{row.gene}</td>
-                    <td>{row.logfc.toFixed(3)}</td>
-                    <td>{Array.isArray(row.groups) && row.groups.length ? row.groups.join(", ") : "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : null}
-
-      <svg className="placeholder-svg" viewBox="0 0 420 200" aria-hidden="true">
-        <rect x="30" y="30" width="360" height="130" rx="12" fill="#f8fafc" stroke="#e2e8f0" />
-        <line x1="210" y1="30" x2="210" y2="160" stroke="#cbd5f5" strokeWidth="2" />
-        <text x="40" y="185" fill="#64748b" fontSize="12">logFC →</text>
-        <text x="15" y="110" fill="#64748b" fontSize="12" transform="rotate(-90 15 110)">-log10 padj</text>
-      </svg>
     </div>
   );
 }
