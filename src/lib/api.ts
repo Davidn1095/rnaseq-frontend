@@ -54,11 +54,15 @@ export async function fetchUmap(
   apiBase: string,
   disease?: string | null,
   maxPoints?: number,
+  cellType?: string | null,
 ): Promise<UmapResponse> {
   const base = stripTrailingSlash(apiBase);
   const url = new URL(`${base}/atlas/umap`);
   if (disease) {
     url.searchParams.set("disease", disease);
+  }
+  if (cellType) {
+    url.searchParams.set("cell_type", cellType);
   }
   if (maxPoints) {
     url.searchParams.set("max_points", String(maxPoints));

@@ -24,7 +24,6 @@ export default function AnalysisSetup({
   const diseases = manifest?.diseases ?? [];
   const nonHealthyDiseases = diseases.filter((item) => item !== "Healthy");
   const cellTypes = manifest?.cell_types ?? [];
-  const allCellTypesSelected = cellTypes.length > 0 && selectedCellTypes.length === cellTypes.length;
 
   const diseaseLabel = (value: string) => {
     const normalized = value.trim();
@@ -50,13 +49,29 @@ export default function AnalysisSetup({
 
     const classify = (label: string) => {
       const name = label.toLowerCase();
-      if (name.includes("t cells") || name.includes("t cell") || name.includes("cd4") || name.includes("cd8") || name.includes("tcr") || name.includes("gd t") || name.includes("gamma delta")) {
+      if (
+        name.includes("t cells") ||
+        name.includes("t cell") ||
+        name.includes("cd4") ||
+        name.includes("cd8") ||
+        name.includes("tcr") ||
+        name.includes("gd t") ||
+        name.includes("gamma delta") ||
+        name.includes("th1") ||
+        name.includes("th2") ||
+        name.includes("th17") ||
+        name.includes("treg") ||
+        name.includes("t regulatory") ||
+        name.includes("regulatory t") ||
+        name.includes("t helper") ||
+        name.includes("helper t")
+      ) {
         return "T cells";
       }
       if (name.includes("b cells") || name.includes("b cell")) {
         return "B cells";
       }
-      if (name.includes("nk")) {
+      if (name.includes("nk") || name.includes("natural killer")) {
         return "NK cells";
       }
       if (name.includes("monocyte")) {
@@ -167,11 +182,7 @@ export default function AnalysisSetup({
               ) : (
                 <div className="multi-select">
                   <div className="row between">
-                    <div className="muted small">
-                      {allCellTypesSelected
-                        ? "All cell types selected"
-                        : `${selectedCellTypes.length} selected`}
-                    </div>
+                    <div />
                     <div className="multi-select-actions">
                       <button className="btn ghost small-button" onClick={handleSelectAllCellTypes} type="button">
                         Select all
@@ -191,12 +202,13 @@ export default function AnalysisSetup({
                       const selectedCount = items.filter((item) => selectedCellTypes.includes(item)).length;
                       const allSelected = selectedCount === items.length;
                       const indeterminate = selectedCount > 0 && !allSelected;
-                      const groupLabelText = items.length === 1 ? `${group}: ${items[0]}` : group;
+                      const groupLabelText = items.length === 1 ? items[0] : group;
 
                       return (
                       <div key={group} className={groupClass}>
                         <div className="group-header">
                           <label className="group-toggle">
+                            <span className="group-label">{groupLabelText}</span>
                             <input
                               type="checkbox"
                               checked={allSelected}
@@ -205,11 +217,7 @@ export default function AnalysisSetup({
                               }}
                               onChange={() => handleToggleGroup(items)}
                             />
-                            <span className="muted small group-label">{groupLabelText}</span>
                           </label>
-                          {items.length > 1 ? (
-                            <span className="muted small">{selectedCount}/{items.length}</span>
-                          ) : null}
                         </div>
                         {items.length > 1 ? items.map((item) => (
                           <label key={item} className="multi-select-option">

@@ -61,7 +61,7 @@ body {
 
 .grid {
   display: grid;
-  grid-template-columns: minmax(520px, 620px) minmax(0, 1fr);
+  grid-template-columns: minmax(640px, 760px) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
   margin-top: 16px;
@@ -336,7 +336,15 @@ body {
 .group-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.group-label {
+  font-weight: 700;
+  color: #1e293b;
+  white-space: normal;
 }
 
 .multi-select-group.compact {

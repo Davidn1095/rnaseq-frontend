@@ -29,7 +29,8 @@ export default function UMAPPlaceholder({
   useEffect(() => {
     let active = true;
     setError(null);
-    fetchUmap(apiBase, mode === "single" ? disease : null, 10000)
+    const cellTypeFilter = selectedCellTypes.length === 1 ? selectedCellTypes[0] : null;
+    fetchUmap(apiBase, mode === "single" ? disease : null, 5000, cellTypeFilter)
       .then((res) => {
         if (!active) return;
         if (!res.ok) {
@@ -52,7 +53,7 @@ export default function UMAPPlaceholder({
     return () => {
       active = false;
     };
-  }, [apiBase, disease, mode]);
+  }, [apiBase, disease, mode, selectedCellTypes]);
 
   const clusterTraces = useMemo(() => {
     if (!umap?.x || !umap?.y || !umap?.color) return [];
@@ -113,7 +114,6 @@ export default function UMAPPlaceholder({
         </div>
         <div className="legend">
           <span className="legend-item"><span className="dot" />Disease</span>
-          <span className="legend-item"><span className="dot" />Accession</span>
           <span className="legend-item"><span className="dot" />Cell type</span>
         </div>
       </div>
