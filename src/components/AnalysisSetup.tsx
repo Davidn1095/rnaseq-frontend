@@ -137,36 +137,51 @@ export default function AnalysisSetup({
                 {groupedCellTypes.map(([groupName, items]) => {
                   const allSelected = items.every((item) => selectedCellTypes.includes(item));
                   const someSelected = items.some((item) => selectedCellTypes.includes(item));
+                  const isSingleItem = items.length === 1;
+                  
                   return (
-                    <div key={groupName} className="cell-type-group">
-                      <div className="cell-type-group-header">
+                    <div key={groupName} className="cell-type-group-box">
+                      {isSingleItem ? (
                         <label className="checkbox-label">
                           <input
                             type="checkbox"
-                            checked={allSelected}
-                            ref={(el) => {
-                              if (el) el.indeterminate = someSelected && !allSelected;
-                            }}
-                            onChange={() => handleToggleGroup(items)}
+                            checked={selectedCellTypes.includes(items[0])}
+                            onChange={() => handleToggleCellType(items[0])}
                           />
-                          <strong>{groupName}</strong>
+                          {items[0]}
                         </label>
-                      </div>
-                      <div className="cell-type-group-items">
-                        {items.map((cellType) => (
-                          <label key={cellType} className="checkbox-label">
-                            <input
-                              type="checkbox"
-                              checked={selectedCellTypes.includes(cellType)}
-                              onChange={() => handleToggleCellType(cellType)}
-                            />
-                            {cellType}
-                          </label>
-                        ))}
-                      </div>
+                      ) : (
+                        <>
+                          <div className="cell-type-group-header">
+                            <label className="checkbox-label">
+                              <input
+                                type="checkbox"
+                                checked={allSelected}
+                                ref={(el) => {
+                                  if (el) el.indeterminate = someSelected && !allSelected;
+                                }}
+                                onChange={() => handleToggleGroup(items)}
+                              />
+                              <strong>{groupName}</strong>
+                            </label>
+                          </div>
+                          <div className="cell-type-group-items">
+                            {items.map((cellType) => (
+                              <label key={cellType} className="checkbox-label">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedCellTypes.includes(cellType)}
+                                  onChange={() => handleToggleCellType(cellType)}
+                                />
+                                {cellType}
+                              </label>
+                            ))}
+                          </div>
+                        </>
+                      )}
                     </div>
                   );
-                })}
+                })}}
               </div>
             </div>
           </div>
