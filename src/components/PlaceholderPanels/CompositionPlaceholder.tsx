@@ -200,8 +200,9 @@ export default function CompositionPlaceholder({ selectedCellTypes }: Compositio
           name: population,
           x: mergedGroups,
           y: yValues,
-          text: hoverText,
+          hovertext: hoverText,
           hoverinfo: "text",
+          textposition: "none",
           marker: {
             color: POPULATION_COLORS[population],
           },

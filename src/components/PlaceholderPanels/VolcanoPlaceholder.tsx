@@ -26,7 +26,6 @@ export default function VolcanoPlaceholder({
     [manifest],
   );
   const [selectedDisease, setSelectedDisease] = useState(disease || diseases[0] || "");
-  const [selectedCellType, setSelectedCellType] = useState(selectedCellTypes[0] || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<DeResponse | null>(null);
@@ -35,9 +34,9 @@ export default function VolcanoPlaceholder({
   const mapDiseaseLabel = (value: string) => {
     const normalized = value.trim().toLowerCase();
     if (normalized === "normal") return "Healthy";
-    if (normalized === "ra" || normalized === "rheumatoid arthritis") return "Rheumatoid arthritis";
+    if (normalized === "ra") return "Rheumatoid arthritis";
     if (normalized === "sjs") return "Sjögren syndrome";
-    if (normalized === "sle" || normalized === "systemic lupus erythematosus") return "Systemic lupus erythematosus";
+    if (normalized === "sle") return "Systemic lupus erythematosus";
     return value;
   };
 
@@ -50,37 +49,30 @@ export default function VolcanoPlaceholder({
     }
   }, [disease, diseases]);
 
-  // Sync cell type selection from Analysis Setup
-  useEffect(() => {
-    if (selectedCellTypes.length > 0) {
-      setSelectedCellType(selectedCellTypes[0]);
-    }
-  }, [selectedCellTypes]);
-
-  const handleFetch = async () => {
-    if (!selectedDisease || !selectedCellType) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetchDeByDisease(apiBase, selectedDisease, selectedCellType, 500, 0, 6);
-      if (!res.ok) {
-        throw new Error(res.error ?? "Request failed");
-      }
-      setResponse(res);
-    } catch (err) {
-      setError(String((err as Error).message ?? err));
-      setResponse(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Auto-fetch when selections change
+  // Auto-fetch when selections change - use first selected cell type
   useEffect(() => {
     if (mode !== "single") return;
-    if (!selectedDisease || !selectedCellType) return;
-    handleFetch();
-  }, [mode, selectedDisease, selectedCellType]);
+    if (!selectedDisease || selectedCellTypes.length === 0) return;
+
+    const cellType = selectedCellTypes[0];
+    setLoading(true);
+    setError(null);
+
+    fetchDeByDisease(apiBase, selectedDisease, cellType, 500, 0, 6)
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(res.error ?? "Request failed");
+        }
+        setResponse(res);
+      })
+      .catch((err) => {
+        setError(String((err as Error).message ?? err));
+        setResponse(null);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [mode, selectedDisease, selectedCellTypes, apiBase]);
 
   const points = useMemo(() => {
     if (!response?.ok || !response.rows) return [];
@@ -98,12 +90,10 @@ export default function VolcanoPlaceholder({
     if (!plotRef.current || !window.Plotly || points.length === 0) return;
     const trace = {
       type: "scatter",
-      mode: "markers+text",
+      mode: "markers",
       x: points.map((p) => p.logfc),
       y: points.map((p) => p.neglog10),
       text: points.map((p) => p.gene),
-      textposition: "top center",
-      textfont: { size: 9, color: "#64748b" },
       hovertext: points.map((p) => `${p.gene}<br>logFC: ${p.logfc.toFixed(3)}<br>-log10(padj): ${p.neglog10.toFixed(2)}`),
       hoverinfo: "text",
       marker: {
@@ -143,7 +133,10 @@ export default function VolcanoPlaceholder({
         <div>
           <div className="h3">Volcano</div>
           <div className="muted small">
-            Differential expression: Disease vs Healthy (pseudobulk)
+            Differential expression: {mapDiseaseLabel(selectedDisease)} vs Healthy
+          </div>
+          <div className="muted small">
+            Cell type: {selectedCellTypes[0]}
           </div>
         </div>
       </div>
@@ -159,19 +152,6 @@ export default function VolcanoPlaceholder({
             {diseases.map((item) => (
               <option key={item} value={item}>
                 {mapDiseaseLabel(item)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="control">
-          <span>Cell type</span>
-          <select
-            value={selectedCellType}
-            onChange={(event) => setSelectedCellType(event.target.value)}
-          >
-            {selectedCellTypes.map((item) => (
-              <option key={item} value={item}>
-                {item}
               </option>
             ))}
           </select>
