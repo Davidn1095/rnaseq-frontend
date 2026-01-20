@@ -28,14 +28,30 @@ export default function ExpressionPlaceholder({
     return value;
   };
 
-  const groupLabel = mode === "single"
-    ? `Healthy, ${mapDiseaseLabel(disease)}`
-    : `Healthy, ${mapDiseaseLabel(leftDisease)}, ${mapDiseaseLabel(rightDisease)}`;
-
   const [selectedGenes, setSelectedGenes] = useState<string[]>(genes.slice(0, 4));
   const [responses, setResponses] = useState<Record<string, ViolinResponse>>({});
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const plotRef = useRef<HTMLDivElement | null>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  const filteredGenes = useMemo(() => {
+    const available = genes.length > 0 ? genes : ["IL7R"];
+    if (!searchQuery.trim()) return available;
+    const query = searchQuery.toLowerCase();
+    return available.filter((gene) => gene.toLowerCase().includes(query));
+  }, [genes, searchQuery]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
 
   useEffect(() => {
@@ -112,41 +128,64 @@ export default function ExpressionPlaceholder({
   return (
     <div className="panel">
       <div className="panel-header">
-        <div>
-          <div className="h3">Expression</div>
-          <div className="muted small">Per-cell distributions for selected gene(s).</div>
-          <div className="muted small">Groups: {groupLabel}</div>
-        </div>
-        <div className="muted small">Genes: {selectedGenes.length > 0 ? selectedGenes.join(", ") : "IL7R"}</div>
+        <div className="h3">Expression</div>
       </div>
 
       <div className="row gap top">
-        <div className="field grow">
+        <div className="field grow" ref={dropdownRef}>
           <label className="muted small">Genes (select up to 4)</label>
-          <div className="scroll-box options">
-            <div className="option-list">
-              <div className="option-actions">
-                <span className="muted small">{selectedGenes.length} selected</span>
-              </div>
-              {(genes.length > 0 ? genes : ["IL7R"]).map((gene) => (
-                <label key={gene} className="option-row">
-                  <input
-                    type="checkbox"
-                    checked={selectedGenes.includes(gene)}
-                    onChange={() => {
-                      setSelectedGenes((prev) => {
-                        if (prev.includes(gene)) {
-                          return prev.filter((item) => item !== gene);
-                        }
-                        if (prev.length >= 4) return prev;
-                        return [...prev, gene];
-                      });
-                    }}
-                  />
-                  <span>{gene}</span>
-                </label>
+          <div className="gene-select-container">
+            <div className="gene-tags">
+              {selectedGenes.map((gene) => (
+                <span key={gene} className="gene-tag">
+                  {gene}
+                  <button
+                    type="button"
+                    className="gene-tag-remove"
+                    onClick={() => setSelectedGenes((prev) => prev.filter((g) => g !== gene))}
+                  >
+                    ×
+                  </button>
+                </span>
               ))}
+              <input
+                type="text"
+                className="gene-search-input"
+                placeholder={selectedGenes.length === 0 ? "Search genes..." : ""}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={() => setDropdownOpen(true)}
+              />
             </div>
+            {dropdownOpen && (
+              <div className="gene-dropdown">
+                {filteredGenes.length === 0 ? (
+                  <div className="gene-dropdown-item disabled">No matches</div>
+                ) : (
+                  filteredGenes.map((gene) => {
+                    const isSelected = selectedGenes.includes(gene);
+                    const isDisabled = !isSelected && selectedGenes.length >= 4;
+                    return (
+                      <div
+                        key={gene}
+                        className={`gene-dropdown-item ${isSelected ? "selected" : ""} ${isDisabled ? "disabled" : ""}`}
+                        onClick={() => {
+                          if (isDisabled) return;
+                          setSelectedGenes((prev) => {
+                            if (isSelected) return prev.filter((g) => g !== gene);
+                            return [...prev, gene];
+                          });
+                          setSearchQuery("");
+                        }}
+                      >
+                        <span className="gene-checkbox">{isSelected ? "✓" : ""}</span>
+                        {gene}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
