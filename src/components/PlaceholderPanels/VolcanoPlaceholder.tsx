@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { DeResponse, Manifest, Mode } from "../../lib/types";
 import { DEFAULT_RESOLVED_BASE, fetchDeByDisease } from "../../lib/api";
 import { getStoredApiBase } from "../../lib/storage";
@@ -31,6 +31,7 @@ export default function VolcanoPlaceholder({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<DeResponse | null>(null);
+  const plotRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!selectedDisease && disease) {
@@ -64,6 +65,41 @@ export default function VolcanoPlaceholder({
 
   const diseaseLabel = mode === "single" ? disease : `${leftDisease} and ${rightDisease}`;
   const cellTypeLabel = selectedCellTypes.length > 0 ? selectedCellTypes.join(", ") : "None selected";
+
+  const points = useMemo(() => {
+    if (!response?.ok || !response.rows) return [];
+    return response.rows.map((row) => {
+      const padj = Math.max(row.p_val_adj ?? row.p_val ?? 1, 1e-300);
+      return {
+        gene: row.gene,
+        logfc: row.logfc,
+        neglog10: -Math.log10(padj),
+      };
+    });
+  }, [response]);
+
+  useEffect(() => {
+    if (!plotRef.current || !window.Plotly || points.length === 0) return;
+    const trace = {
+      type: "scatter",
+      mode: "markers",
+      x: points.map((p) => p.logfc),
+      y: points.map((p) => p.neglog10),
+      text: points.map((p) => p.gene),
+      marker: {
+        size: 8,
+        color: points.map((p) => (p.logfc >= 0 ? "#ef4444" : "#3b82f6")),
+        opacity: 0.8,
+      },
+    };
+    const layout = {
+      margin: { l: 60, r: 20, t: 10, b: 60 },
+      height: 520,
+      xaxis: { title: "logFC" },
+      yaxis: { title: "-log10(padj)" },
+    };
+    window.Plotly.react(plotRef.current, [trace], layout, { displayModeBar: false, responsive: true });
+  }, [points]);
 
   return (
     <div className="panel">
@@ -113,6 +149,10 @@ export default function VolcanoPlaceholder({
       </div>
 
       {error ? <div className="error-banner">{error}</div> : null}
+
+      {response?.ok && response.rows ? (
+        <div className="plot-frame large" ref={plotRef} />
+      ) : null}
 
       {response?.ok && response.top_up && response.top_down ? (
         <div className="panel-grid">

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ViolinResponse } from "../../lib/types";
 import { DEFAULT_RESOLVED_BASE, fetchViolin } from "../../lib/api";
 import { getStoredApiBase } from "../../lib/storage";
@@ -13,6 +13,7 @@ export default function ViolinPlaceholder({ genes, groupBy = "cell_type" }: Viol
   const gene = genes[0] ?? "IL7R";
   const [response, setResponse] = useState<ViolinResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const plotRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -45,6 +46,34 @@ export default function ViolinPlaceholder({ genes, groupBy = "cell_type" }: Viol
     }));
   }, [response]);
 
+  const plotTrace = useMemo(() => {
+    if (!rows.length) return [];
+    return [
+      {
+        type: "box",
+        name: gene,
+        x: rows.map((row) => row.label),
+        q1: rows.map((row) => row.quantiles?.q1 ?? null),
+        median: rows.map((row) => row.quantiles?.median ?? null),
+        q3: rows.map((row) => row.quantiles?.q3 ?? null),
+        lowerfence: rows.map((row) => row.quantiles?.min ?? null),
+        upperfence: rows.map((row) => row.quantiles?.max ?? null),
+        marker: { color: "#6366f1" },
+      },
+    ];
+  }, [rows, gene]);
+
+  useEffect(() => {
+    if (!plotRef.current || !window.Plotly || plotTrace.length === 0) return;
+    const layout = {
+      margin: { l: 60, r: 20, t: 10, b: 90 },
+      height: 520,
+      yaxis: { title: "Expression" },
+      xaxis: { automargin: true },
+    };
+    window.Plotly.react(plotRef.current, plotTrace, layout, { displayModeBar: false, responsive: true });
+  }, [plotTrace]);
+
   return (
     <div className="panel">
       <div className="panel-header">
@@ -59,32 +88,7 @@ export default function ViolinPlaceholder({ genes, groupBy = "cell_type" }: Viol
 
       {error ? <div className="error-banner">{error}</div> : null}
 
-      <div className="table-wrap">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Group</th>
-              <th>Min</th>
-              <th>Q1</th>
-              <th>Median</th>
-              <th>Q3</th>
-              <th>Max</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((summary) => (
-              <tr key={summary.label}>
-                <td>{summary.label}</td>
-                <td>{summary.quantiles?.min ?? "—"}</td>
-                <td>{summary.quantiles?.q1 ?? "—"}</td>
-                <td>{summary.quantiles?.median ?? "—"}</td>
-                <td>{summary.quantiles?.q3 ?? "—"}</td>
-                <td>{summary.quantiles?.max ?? "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <div className="plot-frame large" ref={plotRef} />
     </div>
   );
 }

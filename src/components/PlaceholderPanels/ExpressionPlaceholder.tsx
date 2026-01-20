@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Mode, ViolinResponse } from "../../lib/types";
 import { DEFAULT_RESOLVED_BASE, fetchViolin } from "../../lib/api";
 import { getStoredApiBase } from "../../lib/storage";
@@ -24,14 +24,21 @@ export default function ExpressionPlaceholder({
     : `Healthy, ${leftDisease}, ${rightDisease}`;
 
   const previewGenes = genes.slice(0, 6);
-  const primaryGene = previewGenes[0] ?? "IL7R";
+  const [selectedGene, setSelectedGene] = useState<string>(genes[0] ?? "IL7R");
   const [response, setResponse] = useState<ViolinResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const plotRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (genes.length > 0 && !genes.includes(selectedGene)) {
+      setSelectedGene(genes[0]);
+    }
+  }, [genes, selectedGene]);
 
   useEffect(() => {
     let active = true;
     setError(null);
-    fetchViolin(apiBase, primaryGene, "disease", "quantile")
+    fetchViolin(apiBase, selectedGene, "disease", "quantile")
       .then((res) => {
         if (!active) return;
         if (!res.ok) {
@@ -49,7 +56,7 @@ export default function ExpressionPlaceholder({
     return () => {
       active = false;
     };
-  }, [apiBase, primaryGene]);
+  }, [apiBase, selectedGene]);
 
   const summaries = useMemo(() => {
     if (!response?.ok || !response.groups || !response.quantiles) return [];
@@ -59,6 +66,34 @@ export default function ExpressionPlaceholder({
     }));
   }, [response]);
 
+  const plotTrace = useMemo(() => {
+    if (!summaries.length) return [];
+    return [
+      {
+        type: "box",
+        name: selectedGene,
+        x: summaries.map((s) => s.label),
+        q1: summaries.map((s) => s.quantiles?.q1 ?? null),
+        median: summaries.map((s) => s.quantiles?.median ?? null),
+        q3: summaries.map((s) => s.quantiles?.q3 ?? null),
+        lowerfence: summaries.map((s) => s.quantiles?.min ?? null),
+        upperfence: summaries.map((s) => s.quantiles?.max ?? null),
+        marker: { color: "#2563eb" },
+      },
+    ];
+  }, [summaries, selectedGene]);
+
+  useEffect(() => {
+    if (!plotRef.current || !window.Plotly || plotTrace.length === 0) return;
+    const layout = {
+      margin: { l: 60, r: 20, t: 10, b: 90 },
+      height: 520,
+      yaxis: { title: "Expression" },
+      xaxis: { automargin: true },
+    };
+    window.Plotly.react(plotRef.current, plotTrace, layout, { displayModeBar: false, responsive: true });
+  }, [plotTrace]);
+
   return (
     <div className="panel">
       <div className="panel-header">
@@ -67,10 +102,22 @@ export default function ExpressionPlaceholder({
           <div className="muted small">Per-cell distributions for selected gene(s).</div>
           <div className="muted small">Groups: {groupLabel}</div>
         </div>
-        <div className="muted small">Gene: {primaryGene}</div>
+        <div className="muted small">Gene: {selectedGene}</div>
       </div>
 
       <div className="row gap top">
+        <div className="field">
+          <label className="muted small">Gene</label>
+          <select
+            className="select"
+            value={selectedGene}
+            onChange={(event) => setSelectedGene(event.target.value)}
+          >
+            {(genes.length > 0 ? genes : ["IL7R"]).map((gene) => (
+              <option key={gene} value={gene}>{gene}</option>
+            ))}
+          </select>
+        </div>
         <div className="field grow">
           <label className="muted small">Selected genes (preview)</label>
           <div className="scroll-box">
@@ -89,32 +136,7 @@ export default function ExpressionPlaceholder({
 
       {error ? <div className="error-banner">{error}</div> : null}
 
-      <div className="table-wrap">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Group</th>
-              <th>Min</th>
-              <th>Q1</th>
-              <th>Median</th>
-              <th>Q3</th>
-              <th>Max</th>
-            </tr>
-          </thead>
-          <tbody>
-            {summaries.map((summary) => (
-              <tr key={summary.label}>
-                <td>{summary.label}</td>
-                <td>{summary.quantiles?.min ?? "—"}</td>
-                <td>{summary.quantiles?.q1 ?? "—"}</td>
-                <td>{summary.quantiles?.median ?? "—"}</td>
-                <td>{summary.quantiles?.q3 ?? "—"}</td>
-                <td>{summary.quantiles?.max ?? "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <div className="plot-frame large" ref={plotRef} />
     </div>
   );
 }

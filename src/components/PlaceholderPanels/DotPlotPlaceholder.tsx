@@ -30,14 +30,28 @@ export default function DotPlotPlaceholder({
   const [dotplot, setDotplot] = useState<DotplotResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const plotRef = useRef<HTMLDivElement | null>(null);
-  const previewGenes = genes.slice(0, 20);
+  const previewGenes = genes.slice(0, 30);
+  const [selectedGenes, setSelectedGenes] = useState<string[]>(previewGenes);
   const diseaseLabel = mode === "single" ? disease : `${leftDisease} and ${rightDisease}`;
 
   useEffect(() => {
-    if (previewGenes.length === 0) return;
+    if (genes.length === 0) {
+      setSelectedGenes([]);
+      return;
+    }
+    setSelectedGenes((prev) => {
+      const next = prev.filter((gene) => genes.includes(gene));
+      return next.length > 0 ? next : genes.slice(0, 30);
+    });
+  }, [genes]);
+
+  const activeGenes = selectedGenes.length > 0 ? selectedGenes.slice(0, 30) : previewGenes;
+
+  useEffect(() => {
+    if (activeGenes.length === 0) return;
     let active = true;
     setError(null);
-    fetchDotplot(apiBase, previewGenes)
+    fetchDotplot(apiBase, activeGenes)
       .then((res) => {
         if (!active) return;
         if (!res.ok) {
@@ -55,7 +69,7 @@ export default function DotPlotPlaceholder({
     return () => {
       active = false;
     };
-  }, [apiBase, previewGenes]);
+  }, [apiBase, activeGenes]);
 
   const traces = useMemo(() => {
     if (!dotplot?.groups || !dotplot.genes || !dotplot.avg || !dotplot.pct) return [];
@@ -93,10 +107,24 @@ export default function DotPlotPlaceholder({
       margin: { l: 120, r: 30, t: 10, b: 70 },
       xaxis: { automargin: true },
       yaxis: { automargin: true },
-      height: 420,
+      height: 520,
     };
     window.Plotly.react(plotRef.current, traces, layout, { displayModeBar: false, responsive: true });
   }, [traces]);
+
+  const toggleGene = (gene: string) => {
+    setSelectedGenes((prev) => (
+      prev.includes(gene) ? prev.filter((item) => item !== gene) : [...prev, gene]
+    ));
+  };
+
+  const handleSelectAll = () => {
+    setSelectedGenes(genes.slice(0, 30));
+  };
+
+  const handleClearAll = () => {
+    setSelectedGenes([]);
+  };
 
   return (
     <div className="panel">
@@ -123,16 +151,30 @@ export default function DotPlotPlaceholder({
           </select>
         </div>
         <div className="field grow">
-          <label className="muted small">Genes (preview)</label>
-          <div className="scroll-box">
+          <label className="muted small">Genes (select up to 30)</label>
+          <div className="scroll-box options">
             {loadingGenes ? (
               <div className="skeleton-lines" />
             ) : (
-              <ul>
-                {previewGenes.map((gene) => (
-                  <li key={gene}>{gene}</li>
+              <div className="option-list">
+                <div className="option-actions">
+                  <span className="muted small">{selectedGenes.length} selected</span>
+                  <div className="multi-select-actions">
+                    <button className="btn ghost small-button" type="button" onClick={handleSelectAll}>Select all</button>
+                    <button className="btn ghost small-button" type="button" onClick={handleClearAll}>Clear</button>
+                  </div>
+                </div>
+                {genes.map((gene) => (
+                  <label key={gene} className="option-row">
+                    <input
+                      type="checkbox"
+                      checked={selectedGenes.includes(gene)}
+                      onChange={() => toggleGene(gene)}
+                    />
+                    <span>{gene}</span>
+                  </label>
                 ))}
-              </ul>
+              </div>
             )}
           </div>
         </div>
@@ -140,7 +182,7 @@ export default function DotPlotPlaceholder({
 
       {error ? <div className="error-banner">{error}</div> : null}
 
-      <div className="plot-frame" ref={plotRef} />
+      <div className="plot-frame large" ref={plotRef} />
     </div>
   );
 }

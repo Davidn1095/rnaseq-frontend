@@ -54,7 +54,7 @@ export default function CompositionPlaceholder({ groupBy, onGroupByChange }: Com
     const layout = {
       barmode: "stack",
       margin: { l: 50, r: 20, t: 10, b: 70 },
-      height: 380,
+      height: 520,
       xaxis: { automargin: true },
       yaxis: { automargin: true, title: "Cells" },
       legend: { orientation: "h", y: -0.3 },
@@ -81,7 +81,7 @@ export default function CompositionPlaceholder({ groupBy, onGroupByChange }: Com
         </div>
       </div>
       {error ? <div className="error-banner">{error}</div> : null}
-      <div className="plot-frame" ref={plotRef} />
+      <div className="plot-frame large" ref={plotRef} />
     </div>
   );
 }

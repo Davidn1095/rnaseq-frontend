@@ -37,6 +37,11 @@ export default function UMAPPlaceholder({
           setUmap(null);
           return;
         }
+        if ((res.x?.length ?? 0) === 0) {
+          setError("No UMAP points match the selected disease.");
+          setUmap(res);
+          return;
+        }
         setUmap(res);
       })
       .catch((err) => {
@@ -76,6 +81,7 @@ export default function UMAPPlaceholder({
       yaxis: { title: "UMAP 2", zeroline: false, showgrid: false },
       showlegend: true,
       legend: { orientation: "h", x: 0, y: -0.2 },
+      height: 520,
     }),
     [],
   );
@@ -112,7 +118,7 @@ export default function UMAPPlaceholder({
         </div>
       </div>
 
-      <div className="plot-frame" ref={plotRef} />
+      <div className="plot-frame large" ref={plotRef} />
     </div>
   );
 }
