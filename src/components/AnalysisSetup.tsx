@@ -122,38 +122,37 @@ export default function AnalysisSetup({
         <div className="analysis-stack">
           <div className="row gap">
             <div className="field">
-              <div className="row between">
-                <label className="label">Cell types</label>
-                <div className="row gap-sm">
-                  <button type="button" className="btn btn-sm" onClick={handleSelectAllCellTypes}>
+              <div className="multi-select">
+                <div className="multi-select-actions">
+                  <button type="button" className="btn btn-sm ghost" onClick={handleSelectAllCellTypes}>
                     Select all
                   </button>
-                  <button type="button" className="btn btn-sm" onClick={handleClearCellTypes}>
+                  <button type="button" className="btn btn-sm ghost" onClick={handleClearCellTypes}>
                     Clear
                   </button>
                 </div>
-              </div>
-              <div className="cell-type-groups">
+              <div className="multi-select-options grouped">
                 {groupedCellTypes.map(([groupName, items]) => {
                   const allSelected = items.every((item) => selectedCellTypes.includes(item));
                   const someSelected = items.some((item) => selectedCellTypes.includes(item));
                   const isSingleItem = items.length === 1;
                   
                   return (
-                    <div key={groupName} className="cell-type-group-box">
+                    <div key={groupName} className={`multi-select-group ${items.length <= 3 ? 'tiny' : items.length <= 6 ? 'compact' : ''}`}>
                       {isSingleItem ? (
-                        <label className="checkbox-label">
+                        <div className="multi-select-option">
                           <input
                             type="checkbox"
                             checked={selectedCellTypes.includes(items[0])}
                             onChange={() => handleToggleCellType(items[0])}
                           />
-                          {items[0]}
-                        </label>
+                          <span>{items[0]}</span>
+                        </div>
                       ) : (
                         <>
-                          <div className="cell-type-group-header">
-                            <label className="checkbox-label">
+                          <div className="group-header">
+                            <div className="group-toggle">
+                              <span className="group-label">{groupName}</span>
                               <input
                                 type="checkbox"
                                 checked={allSelected}
@@ -162,26 +161,23 @@ export default function AnalysisSetup({
                                 }}
                                 onChange={() => handleToggleGroup(items)}
                               />
-                              <strong>{groupName}</strong>
-                            </label>
+                            </div>
                           </div>
-                          <div className="cell-type-group-items">
-                            {items.map((cellType) => (
-                              <label key={cellType} className="checkbox-label">
-                                <input
-                                  type="checkbox"
-                                  checked={selectedCellTypes.includes(cellType)}
-                                  onChange={() => handleToggleCellType(cellType)}
-                                />
-                                {cellType}
-                              </label>
-                            ))}
-                          </div>
+                          {items.map((cellType) => (
+                            <div key={cellType} className="multi-select-option">
+                              <input
+                                type="checkbox"
+                                checked={selectedCellTypes.includes(cellType)}
+                                onChange={() => handleToggleCellType(cellType)}
+                              />
+                              <span>{cellType}</span>
+                            </div>
+                          ))}
                         </>
                       )}
                     </div>
                   );
-                })}}
+                })}
               </div>
             </div>
           </div>
