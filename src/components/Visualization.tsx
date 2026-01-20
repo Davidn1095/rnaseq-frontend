@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Manifest, Mode } from "../lib/types";
-import DotPlotPlaceholder from "./PlaceholderPanels/DotPlotPlaceholder";
-import DotPlotFaceted from "./PlaceholderPanels/DotPlotFaceted";
 import CompositionPlaceholder from "./PlaceholderPanels/CompositionPlaceholder";
 import VolcanoPlaceholder from "./PlaceholderPanels/VolcanoPlaceholder";
 import OverlapPlaceholder from "./PlaceholderPanels/OverlapPlaceholder";
@@ -39,7 +37,7 @@ export default function Visualization({
   markersLoading,
 }: VisualizationProps) {
   const [tab, setTab] = useState<
-    "composition" | "violin" | "dot" | "dotfaceted" | "volcano" | "overlap" | "concordance"
+    "composition" | "violin" | "volcano" | "overlap" | "concordance"
   >("composition");
 
   useEffect(() => {
@@ -52,8 +50,6 @@ export default function Visualization({
     const base = [
       { id: "composition", label: "Composition" },
       { id: "violin", label: "Violin" },
-      { id: "dot", label: "Dot plot" },
-      { id: "dotfaceted", label: "Dot (faceted)" },
       { id: "volcano", label: "Volcano" },
     ];
     if (mode === "compare") {
@@ -96,34 +92,6 @@ export default function Visualization({
         </div>
 
         <ErrorBoundary fallbackTitle="Visualization error" fallbackMessage="Unable to render this panel.">
-          {tab === "dot" ? (
-            <DotPlotPlaceholder
-              mode={mode}
-              disease={disease}
-              leftDisease={leftDisease}
-              rightDisease={rightDisease}
-              markerPanel={markerPanel}
-              markerPanels={markerPanels}
-              onMarkerPanelChange={onMarkerPanelChange}
-              genes={markerGenes}
-              loadingGenes={markersLoading}
-            />
-          ) : null}
-
-          {tab === "dotfaceted" ? (
-            <DotPlotFaceted
-              mode={mode}
-              disease={disease}
-              leftDisease={leftDisease}
-              rightDisease={rightDisease}
-              markerPanel={markerPanel}
-              markerPanels={markerPanels}
-              onMarkerPanelChange={onMarkerPanelChange}
-              genes={markerGenes}
-              loadingGenes={markersLoading}
-            />
-          ) : null}
-
           {tab === "composition" ? (
             <CompositionPlaceholder />
           ) : null}
