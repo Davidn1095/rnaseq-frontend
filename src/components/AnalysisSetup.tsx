@@ -172,8 +172,15 @@ export default function AnalysisSetup({
                         </div>
                       </div>
                       <div className="multi-select-options grouped">
-                        {groupedCellTypes.map(([group, items]) => (
-                          <div key={group} className="multi-select-group">
+                        {groupedCellTypes.map(([group, items]) => {
+                          const groupClass = items.length <= 2
+                            ? "multi-select-group tiny"
+                            : items.length <= 4
+                              ? "multi-select-group compact"
+                              : "multi-select-group";
+
+                          return (
+                          <div key={group} className={groupClass}>
                             <div className="muted small group-label">{group}</div>
                             {items.map((item) => (
                               <label key={item} className="multi-select-option">
@@ -186,7 +193,8 @@ export default function AnalysisSetup({
                               </label>
                             ))}
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -253,8 +261,15 @@ export default function AnalysisSetup({
                         </div>
                       </div>
                       <div className="multi-select-options grouped">
-                        {groupedCellTypes.map(([group, items]) => (
-                          <div key={group} className="multi-select-group">
+                        {groupedCellTypes.map(([group, items]) => {
+                          const groupClass = items.length <= 2
+                            ? "multi-select-group tiny"
+                            : items.length <= 4
+                              ? "multi-select-group compact"
+                              : "multi-select-group";
+
+                          return (
+                          <div key={group} className={groupClass}>
                             <div className="muted small group-label">{group}</div>
                             {items.map((item) => (
                               <label key={item} className="multi-select-option">
@@ -267,7 +282,8 @@ export default function AnalysisSetup({
                               </label>
                             ))}
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
