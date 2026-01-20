@@ -325,6 +325,20 @@ body {
   grid-column: span 6;
 }
 
+.group-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .multi-select-group.compact {
   grid-column: span 4;
 }

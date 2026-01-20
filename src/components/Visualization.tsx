@@ -14,7 +14,6 @@ type VisualizationProps = {
   manifest: Manifest | null;
   isLoading: boolean;
   mode: Mode;
-  onModeChange: (mode: Mode) => void;
   disease: string;
   leftDisease: string;
   rightDisease: string;
@@ -30,7 +29,6 @@ export default function Visualization({
   manifest,
   isLoading,
   mode,
-  onModeChange,
   disease,
   leftDisease,
   rightDisease,
@@ -87,21 +85,6 @@ export default function Visualization({
         <div className="row between">
           <div className="h2">Visualization</div>
           <span className="pill">{tab}</span>
-        </div>
-
-        <div className="tabs">
-          <button
-            className={`tab ${mode === "single" ? "on" : ""}`}
-            onClick={() => onModeChange("single")}
-          >
-            Single disease
-          </button>
-          <button
-            className={`tab ${mode === "compare" ? "on" : ""}`}
-            onClick={() => onModeChange("compare")}
-          >
-            Comparison
-          </button>
         </div>
 
         <div className="tabs">

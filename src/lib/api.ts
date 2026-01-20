@@ -4,7 +4,7 @@ export const DEFAULT_API_BASE = "https://rnaseq-backend-y654q6wo2q-ew.a.run.app"
 export const ENV_API_BASE = import.meta.env.VITE_API_BASE_URL as string | undefined;
 export const DEFAULT_RESOLVED_BASE = ENV_API_BASE && ENV_API_BASE.length > 0 ? ENV_API_BASE : DEFAULT_API_BASE;
 
-const TIMEOUT_MS = 10_000;
+const TIMEOUT_MS = 20_000;
 const RETRY_COUNT = 1;
 
 function stripTrailingSlash(url: string) {

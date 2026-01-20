@@ -9,6 +9,7 @@ import { clearStoredApiBase, getStoredApiBase, setStoredApiBase } from "./lib/st
 import type { Manifest, Mode } from "./lib/types";
 
 export default function App() {
+  const NO_COMPARISON = "NA";
   const storedBase = getStoredApiBase();
   const [apiBase, setApiBase] = useState(storedBase ?? DEFAULT_RESOLVED_BASE);
   const [manifest, setManifest] = useState<Manifest | null>(null);
@@ -18,7 +19,6 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("single");
   const [selectedCellTypes, setSelectedCellTypes] = useState<string[]>([]);
-  const [disease, setDisease] = useState("");
   const [leftDisease, setLeftDisease] = useState("");
   const [rightDisease, setRightDisease] = useState("");
   const [markerPanel, setMarkerPanel] = useState("default");
@@ -72,15 +72,11 @@ export default function App() {
       }
 
       const nonHealthy = response.diseases.filter((item) => item !== "Healthy");
-      const nextDisease = nonHealthy[0] ?? "";
       const nextLeft = nonHealthy[0] ?? "";
-      const nextRight = nonHealthy[1] ?? nonHealthy[0] ?? "";
-      const resolvedDisease = nonHealthy.includes(disease) ? disease : nextDisease;
       const resolvedLeft = nonHealthy.includes(leftDisease) ? leftDisease : nextLeft;
-      const resolvedRight = nonHealthy.includes(rightDisease) ? rightDisease : nextRight;
+      const resolvedRight = nonHealthy.includes(rightDisease) ? rightDisease : NO_COMPARISON;
 
       setSelectedCellTypes(response.cell_types ?? []);
-      setDisease(resolvedDisease);
       setLeftDisease(resolvedLeft);
       setRightDisease(resolvedRight);
 
@@ -93,15 +89,19 @@ export default function App() {
       setBackendReachable(false);
       setErrorMessage(`Manifest fetch failed: ${String((error as Error).message ?? error)}`);
     }
-  }, [apiBase, disease, leftDisease, rightDisease, loadMarkersForPanel]);
+  }, [apiBase, leftDisease, rightDisease, loadMarkersForPanel]);
 
   useEffect(() => {
     loadManifest();
   }, [apiBase]);
 
-  const handleDiseaseChange = (nextDisease: string) => {
-    setDisease(nextDisease);
-  };
+  useEffect(() => {
+    if (rightDisease && rightDisease !== NO_COMPARISON) {
+      setMode("compare");
+    } else {
+      setMode("single");
+    }
+  }, [rightDisease]);
 
   const handleLeftDiseaseChange = (nextDisease: string) => {
     setLeftDisease(nextDisease);
@@ -155,12 +155,8 @@ export default function App() {
         <AnalysisSetup
           manifest={manifest}
           isLoading={isLoading}
-          mode={mode}
-          onModeChange={setMode}
           selectedCellTypes={selectedCellTypes}
           onSelectedCellTypesChange={setSelectedCellTypes}
-          disease={disease}
-          onDiseaseChange={handleDiseaseChange}
           leftDisease={leftDisease}
           rightDisease={rightDisease}
           onLeftDiseaseChange={handleLeftDiseaseChange}
@@ -170,8 +166,7 @@ export default function App() {
           manifest={manifest}
           isLoading={isLoading}
           mode={mode}
-          onModeChange={setMode}
-          disease={disease}
+          disease={leftDisease}
           leftDisease={leftDisease}
           rightDisease={rightDisease}
           selectedCellTypes={selectedCellTypes}

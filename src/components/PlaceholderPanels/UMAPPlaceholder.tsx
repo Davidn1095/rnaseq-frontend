@@ -29,7 +29,7 @@ export default function UMAPPlaceholder({
   useEffect(() => {
     let active = true;
     setError(null);
-    fetchUmap(apiBase, mode === "single" ? disease : null, 20000)
+    fetchUmap(apiBase, mode === "single" ? disease : null, 10000)
       .then((res) => {
         if (!active) return;
         if (!res.ok) {
