@@ -76,7 +76,6 @@ export default function Visualization({
       <div className="card">
         <div className="row between">
           <div className="h2">Visualization</div>
-          <span className="pill">{tab}</span>
         </div>
 
         <div className="tabs">
