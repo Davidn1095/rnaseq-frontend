@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Manifest, Mode } from "../lib/types";
 import DotPlotPlaceholder from "./PlaceholderPanels/DotPlotPlaceholder";
+import DotPlotFaceted from "./PlaceholderPanels/DotPlotFaceted";
 import CompositionPlaceholder from "./PlaceholderPanels/CompositionPlaceholder";
 import VolcanoPlaceholder from "./PlaceholderPanels/VolcanoPlaceholder";
 import OverlapPlaceholder from "./PlaceholderPanels/OverlapPlaceholder";
@@ -39,7 +40,7 @@ export default function Visualization({
   markersLoading,
 }: VisualizationProps) {
   const [tab, setTab] = useState<
-    "expression" | "dot" | "composition" | "volcano" | "overlap" | "violin" | "concordance"
+    "expression" | "dot" | "dotfaceted" | "composition" | "volcano" | "overlap" | "violin" | "concordance"
   >("expression");
 
   useEffect(() => {
@@ -52,6 +53,7 @@ export default function Visualization({
     const base = [
       { id: "expression", label: "Expression" },
       { id: "dot", label: "Dot plot" },
+      { id: "dotfaceted", label: "Dot (faceted)" },
       { id: "composition", label: "Composition" },
       { id: "violin", label: "Violin" },
       { id: "volcano", label: "Volcano" },
@@ -100,6 +102,20 @@ export default function Visualization({
         <ErrorBoundary fallbackTitle="Visualization error" fallbackMessage="Unable to render this panel.">
           {tab === "dot" ? (
             <DotPlotPlaceholder
+              mode={mode}
+              disease={disease}
+              leftDisease={leftDisease}
+              rightDisease={rightDisease}
+              markerPanel={markerPanel}
+              markerPanels={markerPanels}
+              onMarkerPanelChange={onMarkerPanelChange}
+              genes={markerGenes}
+              loadingGenes={markersLoading}
+            />
+          ) : null}
+
+          {tab === "dotfaceted" ? (
+            <DotPlotFaceted
               mode={mode}
               disease={disease}
               leftDisease={leftDisease}
