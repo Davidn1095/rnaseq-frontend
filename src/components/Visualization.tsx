@@ -49,8 +49,8 @@ export default function Visualization({
   const tabLabels = useMemo(() => {
     const base = [
       { id: "composition", label: "Composition" },
-      { id: "violin", label: "Violin" },
       { id: "volcano", label: "Volcano" },
+      { id: "violin", label: "Violin" },
     ];
     if (mode === "compare") {
       base.push({ id: "concordance", label: "Concordance" }, { id: "overlap", label: "Overlap" });
