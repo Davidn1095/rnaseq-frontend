@@ -8,9 +8,9 @@ type ViolinPlaceholderProps = {
   groupBy?: "cell_type" | "disease";
 };
 
-export default function ViolinPlaceholder({ genes, groupBy = "cell_type" }: ViolinPlaceholderProps) {
+export default function ViolinPlaceholder({ genes, groupBy = "disease" }: ViolinPlaceholderProps) {
   const apiBase = getStoredApiBase() ?? DEFAULT_RESOLVED_BASE;
-  const gene = genes[0] ?? "IL7R";
+  const [selectedGene, setSelectedGene] = useState(genes[0] ?? "IL7R");
   const [response, setResponse] = useState<ViolinResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const plotRef = useRef<HTMLDivElement | null>(null);
@@ -25,9 +25,15 @@ export default function ViolinPlaceholder({ genes, groupBy = "cell_type" }: Viol
   };
 
   useEffect(() => {
+    if (genes.length > 0 && !genes.includes(selectedGene)) {
+      setSelectedGene(genes[0]);
+    }
+  }, [genes, selectedGene]);
+
+  useEffect(() => {
     let active = true;
     setError(null);
-    fetchViolin(apiBase, gene, groupBy, "hist")
+    fetchViolin(apiBase, selectedGene, groupBy, "hist")
       .then((res) => {
         if (!active) return;
         if (!res.ok) {
@@ -45,7 +51,7 @@ export default function ViolinPlaceholder({ genes, groupBy = "cell_type" }: Viol
     return () => {
       active = false;
     };
-  }, [apiBase, gene, groupBy]);
+  }, [apiBase, selectedGene, groupBy]);
 
   const plotTrace = useMemo(() => {
     if (!response?.ok || !response.groups || !response.bins || !response.counts) return [];
@@ -91,10 +97,25 @@ export default function ViolinPlaceholder({ genes, groupBy = "cell_type" }: Viol
         <div>
           <div className="h3">Violin</div>
           <div className="muted small">
-            Distributions rendered from backend histograms (not raw per-cell vectors).
+            Expression distributions across {groupBy === "disease" ? "diseases" : "cell types"}.
           </div>
-          <div className="muted small">Gene: {gene} · Group by: {groupBy}</div>
         </div>
+      </div>
+
+      <div className="panel-controls">
+        <label className="control">
+          <span>Gene</span>
+          <select
+            value={selectedGene}
+            onChange={(event) => setSelectedGene(event.target.value)}
+          >
+            {(genes.length > 0 ? genes : ["IL7R"]).map((g) => (
+              <option key={g} value={g}>
+                {g}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {error ? <div className="error-banner">{error}</div> : null}

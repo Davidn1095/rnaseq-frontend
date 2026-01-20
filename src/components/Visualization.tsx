@@ -134,7 +134,7 @@ export default function Visualization({
           ) : null}
 
           {tab === "violin" ? (
-            <ViolinPlaceholder genes={violinGenes} />
+            <ViolinPlaceholder genes={violinGenes} groupBy="disease" />
           ) : null}
 
           {tab === "volcano" ? (
