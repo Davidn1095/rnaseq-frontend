@@ -3,11 +3,74 @@ import type { CompositionResponse } from "../../lib/types";
 import { DEFAULT_RESOLVED_BASE, fetchComposition } from "../../lib/api";
 import { getStoredApiBase } from "../../lib/storage";
 
+// Population colors
+const POPULATION_COLORS: Record<string, string> = {
+  "T cells": "#2563eb",
+  "B cells": "#16a34a",
+  "NK cells": "#dc2626",
+  "Monocytes": "#ea580c",
+  "Myeloid/DC": "#9333ea",
+  "Neutrophils": "#0891b2",
+  "Basophils": "#db2777",
+  "Plasma": "#ca8a04",
+  "Progenitors": "#6366f1",
+  "Other": "#64748b",
+};
+
+// Classify cell type into population
+function classifyPopulation(label: string): string {
+  const name = label.toLowerCase();
+  if (
+    name.includes("t cells") ||
+    name.includes("t cell") ||
+    name.includes("cd4") ||
+    name.includes("cd8") ||
+    name.includes("tcr") ||
+    name.includes("gd t") ||
+    name.includes("gamma delta") ||
+    name.includes("th1") ||
+    name.includes("th2") ||
+    name.includes("th17") ||
+    name.includes("treg") ||
+    name.includes("t regulatory") ||
+    name.includes("regulatory t") ||
+    name.includes("t helper") ||
+    name.includes("helper t") ||
+    name.includes("mait")
+  ) {
+    return "T cells";
+  }
+  if (name.includes("b cells") || name.includes("b cell")) {
+    return "B cells";
+  }
+  if (name.includes("nk") || name.includes("natural killer")) {
+    return "NK cells";
+  }
+  if (name.includes("monocyte")) {
+    return "Monocytes";
+  }
+  if (name.includes("dendritic") || name.includes("dc") || name.includes("myeloid")) {
+    return "Myeloid/DC";
+  }
+  if (name.includes("neutrophil")) {
+    return "Neutrophils";
+  }
+  if (name.includes("basophil")) {
+    return "Basophils";
+  }
+  if (name.includes("plasma") || name.includes("plasmablast")) {
+    return "Plasma";
+  }
+  if (name.includes("progenitor") || name.includes("stem")) {
+    return "Progenitors";
+  }
+  return "Other";
+}
+
 export default function CompositionPlaceholder() {
   const apiBase = getStoredApiBase() ?? DEFAULT_RESOLVED_BASE;
   const [response, setResponse] = useState<CompositionResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showPercentage, setShowPercentage] = useState(false);
   const plotRef = useRef<HTMLDivElement | null>(null);
 
   const mapDiseaseLabel = (value: string) => {
@@ -50,6 +113,7 @@ export default function CompositionPlaceholder() {
       return { traces: [], totals: {} };
     }
 
+    // Map and merge disease groups
     const mappedGroups = response.groups.map((group) => mapDiseaseLabel(group));
     const mergedIndex: Record<string, number> = {};
     const mergedGroups: string[] = [];
@@ -60,6 +124,7 @@ export default function CompositionPlaceholder() {
       }
     });
 
+    // Merge counts by disease
     const mergedCounts = mergedGroups.map(() => Array(response.cell_types!.length).fill(0));
     response.counts.forEach((row, rowIdx) => {
       if (!row || !Array.isArray(row)) return;
@@ -72,43 +137,68 @@ export default function CompositionPlaceholder() {
       });
     });
 
+    // Aggregate by population
+    const populations = Object.keys(POPULATION_COLORS);
+    const populationCounts: Record<string, Record<string, number>> = {};
+
+    populations.forEach((pop) => {
+      populationCounts[pop] = {};
+      mergedGroups.forEach((disease) => {
+        populationCounts[pop][disease] = 0;
+      });
+    });
+
+    response.cell_types.forEach((cellType, cellIdx) => {
+      const population = classifyPopulation(cellType);
+      mergedGroups.forEach((disease, diseaseIdx) => {
+        populationCounts[population][disease] += mergedCounts[diseaseIdx][cellIdx];
+      });
+    });
+
     // Calculate totals per disease
     const diseaseTotals: Record<string, number> = {};
-    mergedGroups.forEach((group, idx) => {
-      diseaseTotals[group] = mergedCounts[idx].reduce((sum, val) => sum + val, 0);
+    mergedGroups.forEach((disease) => {
+      diseaseTotals[disease] = populations.reduce(
+        (sum, pop) => sum + populationCounts[pop][disease],
+        0
+      );
     });
 
-    // Build traces - either absolute or percentage
-    const builtTraces = response.cell_types.map((cellType, idx) => {
-      const yValues = mergedCounts.map((row, groupIdx) => {
-        const count = row?.[idx] ?? 0;
-        if (showPercentage) {
-          const total = diseaseTotals[mergedGroups[groupIdx]] || 1;
+    // Build traces with percentages
+    const builtTraces = populations
+      .filter((pop) => {
+        // Only include populations that have any cells
+        return mergedGroups.some((disease) => populationCounts[pop][disease] > 0);
+      })
+      .map((population) => {
+        const yValues = mergedGroups.map((disease) => {
+          const count = populationCounts[population][disease];
+          const total = diseaseTotals[disease] || 1;
           return (count / total) * 100;
-        }
-        return count;
-      });
+        });
 
-      // For hover, show both absolute and percentage
-      const hoverText = mergedCounts.map((row, groupIdx) => {
-        const count = row?.[idx] ?? 0;
-        const total = diseaseTotals[mergedGroups[groupIdx]] || 1;
-        const pct = ((count / total) * 100).toFixed(1);
-        return `${cellType}<br>${mergedGroups[groupIdx]}<br>Count: ${count.toLocaleString()}<br>Percentage: ${pct}%`;
-      });
+        const hoverText = mergedGroups.map((disease) => {
+          const count = populationCounts[population][disease];
+          const total = diseaseTotals[disease] || 1;
+          const pct = ((count / total) * 100).toFixed(1);
+          return `<b>${population}</b><br>${disease}<br>Count: ${count.toLocaleString()}<br>Percentage: ${pct}%`;
+        });
 
-      return {
-        type: "bar",
-        name: cellType,
-        x: mergedGroups,
-        y: yValues,
-        text: hoverText,
-        hoverinfo: "text",
-      };
-    });
+        return {
+          type: "bar",
+          name: population,
+          x: mergedGroups,
+          y: yValues,
+          text: hoverText,
+          hoverinfo: "text",
+          marker: {
+            color: POPULATION_COLORS[population],
+          },
+        };
+      });
 
     return { traces: builtTraces, totals: diseaseTotals };
-  }, [response, showPercentage]);
+  }, [response]);
 
   useEffect(() => {
     if (!plotRef.current || !window.Plotly || traces.length === 0) return;
@@ -119,35 +209,20 @@ export default function CompositionPlaceholder() {
       xaxis: { automargin: true, tickangle: -45 },
       yaxis: {
         automargin: true,
-        title: showPercentage ? "Percentage (%)" : "Cell count",
+        title: "Percentage (%)",
+        range: [0, 100],
       },
-      legend: { orientation: "h" as const, y: -0.35 },
+      legend: { orientation: "h" as const, y: -0.3 },
     };
     window.Plotly.react(plotRef.current, traces, layout, { displayModeBar: false, responsive: true });
-  }, [traces, showPercentage]);
+  }, [traces]);
 
   return (
     <div className="panel">
       <div className="panel-header">
         <div>
           <div className="h3">Composition</div>
-          <div className="muted small">Cell type composition per disease</div>
-        </div>
-        <div className="row gap">
-          <button
-            type="button"
-            className={`tab ${!showPercentage ? "on" : ""}`}
-            onClick={() => setShowPercentage(false)}
-          >
-            Absolute
-          </button>
-          <button
-            type="button"
-            className={`tab ${showPercentage ? "on" : ""}`}
-            onClick={() => setShowPercentage(true)}
-          >
-            Percentage
-          </button>
+          <div className="muted small">Cell population composition per disease (%)</div>
         </div>
       </div>
 
