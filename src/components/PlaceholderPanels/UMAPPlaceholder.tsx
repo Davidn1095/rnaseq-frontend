@@ -4,7 +4,7 @@ import type { Mode } from "../../lib/types";
 type UMAPPlaceholderProps = {
   mode: Mode;
   selectedCellTypes: string[];
-  selectedAccessionCount: number;
+  cohortAccessionCount: number;
   disease: string;
   leftDisease: string;
   rightDisease: string;
@@ -13,7 +13,7 @@ type UMAPPlaceholderProps = {
 export default function UMAPPlaceholder({
   mode,
   selectedCellTypes,
-  selectedAccessionCount,
+  cohortAccessionCount,
   disease,
   leftDisease,
   rightDisease,
@@ -22,7 +22,7 @@ export default function UMAPPlaceholder({
   const cellTypeLabel = selectedCellTypes.length > 0 ? selectedCellTypes.join(", ") : "None selected";
   const plotRef = useRef<HTMLDivElement | null>(null);
   const clusterTraces = useMemo(() => {
-    const totalPoints = Math.max(320, Math.min(1600, selectedAccessionCount * 40));
+    const totalPoints = Math.max(320, Math.min(1600, cohortAccessionCount * 40));
     const pointsPerCluster = Math.max(80, Math.floor(totalPoints / 3));
     const clusters = [
       { label: "Disease", color: "#60a5fa", center: [-2.2, 1.6] },
@@ -52,7 +52,7 @@ export default function UMAPPlaceholder({
         },
       };
     });
-  }, [selectedAccessionCount]);
+  }, [cohortAccessionCount]);
   const layout = useMemo(
     () => ({
       margin: { l: 40, r: 20, t: 10, b: 40 },
@@ -88,7 +88,7 @@ export default function UMAPPlaceholder({
         <div>
           <div className="h3">UMAP</div>
           <div className="muted small">Cohort: {cohortLabel} · Cell types: {cellTypeLabel}</div>
-          <div className="muted small">Selected accessions: {selectedAccessionCount}</div>
+          <div className="muted small">Accessions in cohort: {cohortAccessionCount}</div>
         </div>
         <div className="legend">
           <span className="legend-item"><span className="dot" />Disease</span>

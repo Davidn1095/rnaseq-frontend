@@ -4,9 +4,9 @@ import Header from "./components/Header";
 import AnalysisSetup from "./components/AnalysisSetup";
 import Visualization from "./components/Visualization";
 import SettingsModal from "./components/SettingsModal";
-import { DEFAULT_RESOLVED_BASE, fetchAccessions, fetchManifest, fetchMarkers } from "./lib/api";
+import { DEFAULT_RESOLVED_BASE, fetchManifest, fetchMarkers } from "./lib/api";
 import { clearStoredApiBase, getStoredApiBase, setStoredApiBase } from "./lib/storage";
-import type { Accession, Manifest, Mode } from "./lib/types";
+import type { Manifest, Mode } from "./lib/types";
 
 export default function App() {
   const storedBase = getStoredApiBase();
@@ -21,10 +21,6 @@ export default function App() {
   const [disease, setDisease] = useState("");
   const [leftDisease, setLeftDisease] = useState("");
   const [rightDisease, setRightDisease] = useState("");
-  const [accessionsByDisease, setAccessionsByDisease] = useState<Record<string, Accession[]>>({});
-  const [selectedSingleAcc, setSelectedSingleAcc] = useState<string[]>([]);
-  const [selectedLeftAcc, setSelectedLeftAcc] = useState<string[]>([]);
-  const [selectedRightAcc, setSelectedRightAcc] = useState<string[]>([]);
   const [markerPanel, setMarkerPanel] = useState("default");
   const [markerGenes, setMarkerGenes] = useState<string[]>([]);
   const [markersLoading, setMarkersLoading] = useState(false);
@@ -37,40 +33,18 @@ export default function App() {
     return panels.length > 0 ? panels : ["default"];
   }, [manifest]);
 
-  const healthyIds = useMemo(() => {
-    return (accessionsByDisease.Healthy ?? []).map((row) => row.id);
-  }, [accessionsByDisease]);
-
-  const selectedAccessionCount = useMemo(() => {
-    const all = new Set<string>();
-    healthyIds.forEach((id) => all.add(id));
+  const cohortAccessionCount = useMemo(() => {
+    if (!manifest) return 0;
+    const counts = new Map<string, number>();
+    manifest.accessions?.forEach((acc) => {
+      counts.set(acc.disease, (counts.get(acc.disease) ?? 0) + 1);
+    });
+    const countFor = (d: string) => (d ? counts.get(d) ?? 0 : 0);
     if (mode === "single") {
-      selectedSingleAcc.forEach((id) => all.add(id));
-    } else {
-      selectedLeftAcc.forEach((id) => all.add(id));
-      selectedRightAcc.forEach((id) => all.add(id));
+      return countFor("Healthy") + countFor(disease);
     }
-    return all.size;
-  }, [healthyIds, mode, selectedSingleAcc, selectedLeftAcc, selectedRightAcc]);
-
-  const loadAccessionsForDisease = useCallback(
-    async (targetDisease: string, onSeedSelection?: (rows: Accession[]) => void) => {
-      if (!targetDisease) return;
-      try {
-        const response = await fetchAccessions(apiBase, targetDisease);
-        if (!response.ok) {
-          throw new Error("accessions.ok=false");
-        }
-        setAccessionsByDisease((prev) => ({ ...prev, [targetDisease]: response.accessions }));
-        if (onSeedSelection) {
-          onSeedSelection(response.accessions);
-        }
-      } catch (error) {
-        setErrorMessage(`Accessions fetch failed for ${targetDisease}: ${String((error as Error).message ?? error)}`);
-      }
-    },
-    [apiBase],
-  );
+    return countFor(leftDisease) + countFor(rightDisease);
+  }, [manifest, mode, disease, leftDisease, rightDisease]);
 
   const loadMarkersForPanel = useCallback(
     async (panel: string) => {
@@ -94,7 +68,6 @@ export default function App() {
     setManifestStatus("loading");
     setErrorMessage(null);
     setManifest(null);
-    setAccessionsByDisease({});
     setMarkerGenes([]);
     try {
       const response = await fetchManifest(apiBase);
@@ -123,17 +96,6 @@ export default function App() {
       setLeftDisease(resolvedLeft);
       setRightDisease(resolvedRight);
 
-      await loadAccessionsForDisease("Healthy");
-      await loadAccessionsForDisease(resolvedDisease, (rows) => {
-        setSelectedSingleAcc(rows.map((row) => row.id));
-      });
-      await loadAccessionsForDisease(resolvedLeft, (rows) => {
-        setSelectedLeftAcc(rows.map((row) => row.id));
-      });
-      await loadAccessionsForDisease(resolvedRight, (rows) => {
-        setSelectedRightAcc(rows.map((row) => row.id));
-      });
-
       const panelKeys = Object.keys(response.marker_panels ?? {});
       const defaultPanel = panelKeys.includes("default") ? "default" : panelKeys[0] ?? "default";
       setMarkerPanel(defaultPanel);
@@ -143,7 +105,7 @@ export default function App() {
       setBackendReachable(false);
       setErrorMessage(`Manifest fetch failed: ${String((error as Error).message ?? error)}`);
     }
-  }, [apiBase, disease, leftDisease, rightDisease, loadAccessionsForDisease, loadMarkersForPanel]);
+  }, [apiBase, disease, leftDisease, rightDisease, loadMarkersForPanel]);
 
   useEffect(() => {
     loadManifest();
@@ -151,26 +113,14 @@ export default function App() {
 
   const handleDiseaseChange = (nextDisease: string) => {
     setDisease(nextDisease);
-    loadAccessionsForDisease(nextDisease, (rows) => {
-      const rowIds = new Set(rows.map((row) => row.id));
-      setSelectedSingleAcc((prev) => prev.filter((id) => rowIds.has(id)));
-    });
   };
 
   const handleLeftDiseaseChange = (nextDisease: string) => {
     setLeftDisease(nextDisease);
-    loadAccessionsForDisease(nextDisease, (rows) => {
-      const rowIds = new Set(rows.map((row) => row.id));
-      setSelectedLeftAcc((prev) => prev.filter((id) => rowIds.has(id)));
-    });
   };
 
   const handleRightDiseaseChange = (nextDisease: string) => {
     setRightDisease(nextDisease);
-    loadAccessionsForDisease(nextDisease, (rows) => {
-      const rowIds = new Set(rows.map((row) => row.id));
-      setSelectedRightAcc((prev) => prev.filter((id) => rowIds.has(id)));
-    });
   };
 
   const handleMarkerPanelChange = (panel: string) => {
@@ -227,14 +177,7 @@ export default function App() {
           rightDisease={rightDisease}
           onLeftDiseaseChange={handleLeftDiseaseChange}
           onRightDiseaseChange={handleRightDiseaseChange}
-          accessionsByDisease={accessionsByDisease}
-          selectedSingleAcc={selectedSingleAcc}
-          onSelectedSingleAccChange={setSelectedSingleAcc}
-          selectedLeftAcc={selectedLeftAcc}
-          onSelectedLeftAccChange={setSelectedLeftAcc}
-          selectedRightAcc={selectedRightAcc}
-          onSelectedRightAccChange={setSelectedRightAcc}
-          totalSelected={selectedAccessionCount}
+          cohortAccessionCount={cohortAccessionCount}
         />
         <Visualization
           manifest={manifest}
@@ -245,7 +188,7 @@ export default function App() {
           leftDisease={leftDisease}
           rightDisease={rightDisease}
           selectedCellTypes={selectedCellTypes}
-          selectedAccessionCount={selectedAccessionCount}
+          cohortAccessionCount={cohortAccessionCount}
           markerPanels={markerPanels}
           markerPanel={markerPanel}
           onMarkerPanelChange={handleMarkerPanelChange}

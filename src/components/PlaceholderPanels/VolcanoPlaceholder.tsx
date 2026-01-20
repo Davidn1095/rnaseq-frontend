@@ -123,6 +123,7 @@ export default function VolcanoPlaceholder({
                 <tr>
                   <th>Gene</th>
                   <th>logFC</th>
+                  <th>Groups</th>
                 </tr>
               </thead>
               <tbody>
@@ -130,6 +131,7 @@ export default function VolcanoPlaceholder({
                   <tr key={`up-${row.gene}`}>
                     <td>{row.gene}</td>
                     <td>{row.logfc.toFixed(3)}</td>
+                    <td>{row.groups?.length ? row.groups.join(", ") : "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -142,6 +144,7 @@ export default function VolcanoPlaceholder({
                 <tr>
                   <th>Gene</th>
                   <th>logFC</th>
+                  <th>Groups</th>
                 </tr>
               </thead>
               <tbody>
@@ -149,6 +152,7 @@ export default function VolcanoPlaceholder({
                   <tr key={`down-${row.gene}`}>
                     <td>{row.gene}</td>
                     <td>{row.logfc.toFixed(3)}</td>
+                    <td>{row.groups?.length ? row.groups.join(", ") : "—"}</td>
                   </tr>
                 ))}
               </tbody>

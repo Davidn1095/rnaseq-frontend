@@ -18,11 +18,6 @@ export type Manifest = {
   marker_panels: Record<string, string[]>;
 };
 
-export type AccessionsResponse = {
-  ok: boolean;
-  accessions: Accession[];
-};
-
 export type MarkersResponse = {
   ok: boolean;
   genes: string[];
@@ -31,6 +26,7 @@ export type MarkersResponse = {
 export type DeRow = {
   gene: string;
   logfc: number;
+  groups?: string[];
   p_val?: number;
   p_val_adj?: number;
   padj?: number;

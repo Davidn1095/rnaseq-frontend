@@ -1,5 +1,4 @@
-import AccessionPicker from "./AccessionPicker";
-import type { Accession, Manifest, Mode } from "../lib/types";
+import type { Manifest, Mode } from "../lib/types";
 
 type AnalysisSetupProps = {
   manifest: Manifest | null;
@@ -14,14 +13,7 @@ type AnalysisSetupProps = {
   rightDisease: string;
   onLeftDiseaseChange: (disease: string) => void;
   onRightDiseaseChange: (disease: string) => void;
-  accessionsByDisease: Record<string, Accession[]>;
-  selectedSingleAcc: string[];
-  onSelectedSingleAccChange: (next: string[]) => void;
-  selectedLeftAcc: string[];
-  onSelectedLeftAccChange: (next: string[]) => void;
-  selectedRightAcc: string[];
-  onSelectedRightAccChange: (next: string[]) => void;
-  totalSelected: number;
+  cohortAccessionCount: number;
 };
 
 export default function AnalysisSetup({
@@ -37,19 +29,70 @@ export default function AnalysisSetup({
   rightDisease,
   onLeftDiseaseChange,
   onRightDiseaseChange,
-  accessionsByDisease,
-  selectedSingleAcc,
-  onSelectedSingleAccChange,
-  selectedLeftAcc,
-  onSelectedLeftAccChange,
-  selectedRightAcc,
-  onSelectedRightAccChange,
-  totalSelected,
+  cohortAccessionCount,
 }: AnalysisSetupProps) {
   const diseases = manifest?.diseases ?? [];
   const nonHealthyDiseases = diseases.filter((item) => item !== "Healthy");
   const cellTypes = manifest?.cell_types ?? [];
   const allCellTypesSelected = cellTypes.length > 0 && selectedCellTypes.length === cellTypes.length;
+
+  const groupCellTypes = (items: string[]) => {
+    const groups: Record<string, string[]> = {
+      "T cells": [],
+      "B cells": [],
+      "NK cells": [],
+      Monocytes: [],
+      "Myeloid/DC": [],
+      Neutrophils: [],
+      Basophils: [],
+      Plasma: [],
+      Progenitors: [],
+      Other: [],
+    };
+
+    const classify = (label: string) => {
+      const name = label.toLowerCase();
+      if (name.includes("t cells") || name.includes("t cell") || name.includes("cd4") || name.includes("cd8") || name.includes("tcr") || name.includes("gd t") || name.includes("gamma delta")) {
+        return "T cells";
+      }
+      if (name.includes("b cells") || name.includes("b cell")) {
+        return "B cells";
+      }
+      if (name.includes("nk")) {
+        return "NK cells";
+      }
+      if (name.includes("monocyte")) {
+        return "Monocytes";
+      }
+      if (name.includes("dendritic") || name.includes("dc") || name.includes("myeloid")) {
+        return "Myeloid/DC";
+      }
+      if (name.includes("neutrophil")) {
+        return "Neutrophils";
+      }
+      if (name.includes("basophil")) {
+        return "Basophils";
+      }
+      if (name.includes("plasma") || name.includes("plasmablast")) {
+        return "Plasma";
+      }
+      if (name.includes("progenitor") || name.includes("stem")) {
+        return "Progenitors";
+      }
+      return "Other";
+    };
+
+    items.forEach((item) => {
+      const key = classify(item);
+      groups[key].push(item);
+    });
+
+    return Object.entries(groups)
+      .map(([key, values]) => [key, values.sort((a, b) => a.localeCompare(b))] as const)
+      .filter(([, values]) => values.length > 0);
+  };
+
+  const groupedCellTypes = groupCellTypes(cellTypes);
 
   const handleToggleCellType = (cell: string) => {
     if (selectedCellTypes.includes(cell)) {
@@ -108,15 +151,6 @@ export default function AnalysisSetup({
                 </div>
               </div>
 
-              <AccessionPicker
-                title={`${disease} accessions`}
-                description={`${disease} · ${(accessionsByDisease[disease] ?? []).length} accessions`}
-                accessions={accessionsByDisease[disease] ?? []}
-                selected={selectedSingleAcc}
-                onChange={onSelectedSingleAccChange}
-                isLoading={isLoading}
-              />
-
               <div className="row gap">
                 <div className="field">
                   <label className="muted small">Cell types</label>
@@ -139,16 +173,21 @@ export default function AnalysisSetup({
                           </button>
                         </div>
                       </div>
-                      <div className="multi-select-options">
-                        {cellTypes.map((item) => (
-                          <label key={item} className="multi-select-option">
-                            <input
-                              type="checkbox"
-                              checked={selectedCellTypes.includes(item)}
-                              onChange={() => handleToggleCellType(item)}
-                            />
-                            <span>{item}</span>
-                          </label>
+                      <div className="multi-select-options grouped">
+                        {groupedCellTypes.map(([group, items]) => (
+                          <div key={group} className="multi-select-group">
+                            <div className="muted small group-label">{group}</div>
+                            {items.map((item) => (
+                              <label key={item} className="multi-select-option">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedCellTypes.includes(item)}
+                                  onChange={() => handleToggleCellType(item)}
+                                />
+                                <span>{item}</span>
+                              </label>
+                            ))}
+                          </div>
                         ))}
                       </div>
                       <div className="chips">
@@ -193,14 +232,6 @@ export default function AnalysisSetup({
                       </select>
                     )}
                   </div>
-                  <AccessionPicker
-                    title={`${leftDisease} accessions`}
-                    description={`${leftDisease} · ${(accessionsByDisease[leftDisease] ?? []).length} accessions`}
-                    accessions={accessionsByDisease[leftDisease] ?? []}
-                    selected={selectedLeftAcc}
-                    onChange={onSelectedLeftAccChange}
-                    isLoading={isLoading}
-                  />
                 </div>
                 <div className="card sub comparison-card">
                   <div className="field">
@@ -215,14 +246,6 @@ export default function AnalysisSetup({
                       </select>
                     )}
                   </div>
-                  <AccessionPicker
-                    title={`${rightDisease} accessions`}
-                    description={`${rightDisease} · ${(accessionsByDisease[rightDisease] ?? []).length} accessions`}
-                    accessions={accessionsByDisease[rightDisease] ?? []}
-                    selected={selectedRightAcc}
-                    onChange={onSelectedRightAccChange}
-                    isLoading={isLoading}
-                  />
                 </div>
               </div>
 
@@ -252,16 +275,21 @@ export default function AnalysisSetup({
                           </button>
                         </div>
                       </div>
-                      <div className="multi-select-options">
-                        {cellTypes.map((item) => (
-                          <label key={item} className="multi-select-option">
-                            <input
-                              type="checkbox"
-                              checked={selectedCellTypes.includes(item)}
-                              onChange={() => handleToggleCellType(item)}
-                            />
-                            <span>{item}</span>
-                          </label>
+                      <div className="multi-select-options grouped">
+                        {groupedCellTypes.map(([group, items]) => (
+                          <div key={group} className="multi-select-group">
+                            <div className="muted small group-label">{group}</div>
+                            {items.map((item) => (
+                              <label key={item} className="multi-select-option">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedCellTypes.includes(item)}
+                                  onChange={() => handleToggleCellType(item)}
+                                />
+                                <span>{item}</span>
+                              </label>
+                            ))}
+                          </div>
                         ))}
                       </div>
                       <div className="chips">
@@ -289,7 +317,7 @@ export default function AnalysisSetup({
               <div className="row between comparison-actions">
                 <button className="btn" disabled>Compute overlap</button>
                 <div className="muted small">
-                  Selected accessions in session: <span className="mono">{totalSelected}</span>
+                  Accessions in cohort: <span className="mono">{cohortAccessionCount}</span>
                 </div>
               </div>
             </>
@@ -299,7 +327,7 @@ export default function AnalysisSetup({
           <>
             <div className="sep" />
             <div className="muted small">
-              Selected accessions in session: <span className="mono">{totalSelected}</span>
+              Accessions in cohort: <span className="mono">{cohortAccessionCount}</span>
             </div>
           </>
         ) : null}

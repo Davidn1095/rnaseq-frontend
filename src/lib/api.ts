@@ -1,4 +1,4 @@
-import type { AccessionsResponse, DeResponse, Manifest, MarkersResponse } from "./types";
+import type { DeResponse, Manifest, MarkersResponse } from "./types";
 
 export const DEFAULT_API_BASE = "https://rnaseq-backend-y654q6wo2q-ew.a.run.app";
 export const ENV_API_BASE = import.meta.env.VITE_API_BASE_URL as string | undefined;
@@ -41,13 +41,6 @@ async function fetchJson<T>(url: string, init: RequestInit = {}, retries = RETRY
 export async function fetchManifest(apiBase: string): Promise<Manifest> {
   const url = `${stripTrailingSlash(apiBase)}/atlas/manifest`;
   return fetchJson<Manifest>(url);
-}
-
-export async function fetchAccessions(apiBase: string, disease: string): Promise<AccessionsResponse> {
-  const base = stripTrailingSlash(apiBase);
-  const url = new URL(`${base}/atlas/accessions`);
-  url.searchParams.set("disease", disease);
-  return fetchJson<AccessionsResponse>(url.toString());
 }
 
 export async function fetchMarkers(apiBase: string, panel: string): Promise<MarkersResponse> {

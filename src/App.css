@@ -306,6 +306,26 @@ body {
   background: #fff;
 }
 
+.multi-select-options.grouped {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.multi-select-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+}
+
+.multi-select-group .group-label {
+  grid-column: 1 / -1;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
 .multi-select-option {
   display: flex;
   align-items: center;
