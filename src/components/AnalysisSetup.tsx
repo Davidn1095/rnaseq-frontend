@@ -198,7 +198,7 @@ export default function AnalysisSetup({
               <div className="comparison-grid">
                 <div className="card sub comparison-card">
                   <div className="field">
-                    <label className="muted small">Left disease</label>
+                    <label className="muted small">Disease 1</label>
                     {isLoading ? (
                       <div className="skeleton input" />
                     ) : (
@@ -212,7 +212,7 @@ export default function AnalysisSetup({
                 </div>
                 <div className="card sub comparison-card">
                   <div className="field">
-                    <label className="muted small">Right disease</label>
+                    <label className="muted small">Disease 2</label>
                     {isLoading ? (
                       <div className="skeleton input" />
                     ) : (
@@ -274,9 +274,6 @@ export default function AnalysisSetup({
                 </div>
               </div>
 
-              <div className="row between comparison-actions">
-                <button className="btn" disabled>Compute overlap</button>
-              </div>
             </>
           )}
         </div>
