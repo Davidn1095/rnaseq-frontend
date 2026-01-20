@@ -44,7 +44,6 @@ export default function Visualization({
   const [tab, setTab] = useState<
     "umap" | "expression" | "dot" | "composition" | "volcano" | "overlap" | "violin" | "concordance"
   >("umap");
-  const [groupBy, setGroupBy] = useState<"disease" | "accession">("disease");
 
   useEffect(() => {
     if (mode === "single" && (tab === "overlap" || tab === "concordance")) {
@@ -160,7 +159,7 @@ export default function Visualization({
           ) : null}
 
           {tab === "composition" ? (
-            <CompositionPlaceholder groupBy={groupBy} onGroupByChange={setGroupBy} />
+            <CompositionPlaceholder />
           ) : null}
 
           {tab === "violin" ? (

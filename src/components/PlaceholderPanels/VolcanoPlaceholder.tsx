@@ -33,6 +33,15 @@ export default function VolcanoPlaceholder({
   const [response, setResponse] = useState<DeResponse | null>(null);
   const plotRef = useRef<HTMLDivElement | null>(null);
 
+  const mapDiseaseLabel = (value: string) => {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "normal") return "Healthy";
+    if (normalized === "ra" || normalized === "rheumatoid arthritis") return "Rheumatoid arthritis";
+    if (normalized === "sjs") return "Sjögren syndrome";
+    if (normalized === "sle" || normalized === "systemic lupus erythematosus") return "Systemic lupus erythematosus";
+    return value;
+  };
+
   useEffect(() => {
     if (!selectedDisease && disease) {
       setSelectedDisease(disease);
@@ -63,7 +72,15 @@ export default function VolcanoPlaceholder({
     }
   };
 
-  const diseaseLabel = mode === "single" ? disease : `${leftDisease} and ${rightDisease}`;
+  useEffect(() => {
+    if (mode !== "single") return;
+    if (!selectedDisease || !selectedCellType) return;
+    handleFetch();
+  }, [mode, selectedDisease, selectedCellType]);
+
+  const diseaseLabel = mode === "single"
+    ? mapDiseaseLabel(disease)
+    : `${mapDiseaseLabel(leftDisease)} and ${mapDiseaseLabel(rightDisease)}`;
   const cellTypeLabel = selectedCellTypes.length > 0 ? selectedCellTypes.join(", ") : "None selected";
 
   const points = useMemo(() => {

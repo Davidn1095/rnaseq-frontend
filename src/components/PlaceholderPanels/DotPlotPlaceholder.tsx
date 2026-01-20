@@ -22,7 +22,7 @@ export default function DotPlotPlaceholder({
   rightDisease,
   markerPanel,
   markerPanels,
-  onMarkerPanelChange,
+  onMarkerPanelChange: _onMarkerPanelChange,
   genes,
   loadingGenes,
 }: DotPlotPlaceholderProps) {
@@ -138,18 +138,6 @@ export default function DotPlotPlaceholder({
       </div>
 
       <div className="row gap top">
-        <div className="field">
-          <label className="muted small">Marker panel</label>
-          <select
-            className="select"
-            value={markerPanel}
-            onChange={(event) => onMarkerPanelChange(event.target.value)}
-          >
-            {markerPanels.map((panel) => (
-              <option key={panel} value={panel}>{panel}</option>
-            ))}
-          </select>
-        </div>
         <div className="field grow">
           <label className="muted small">Genes (select up to 30)</label>
           <div className="scroll-box options">

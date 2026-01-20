@@ -19,69 +19,84 @@ export default function ExpressionPlaceholder({
   genes,
 }: ExpressionPlaceholderProps) {
   const apiBase = getStoredApiBase() ?? DEFAULT_RESOLVED_BASE;
-  const groupLabel = mode === "single"
-    ? `Healthy, ${disease}`
-    : `Healthy, ${leftDisease}, ${rightDisease}`;
+  const mapDiseaseLabel = (value: string) => {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "normal") return "Healthy";
+    if (normalized === "ra" || normalized === "rheumatoid arthritis") return "Rheumatoid arthritis";
+    if (normalized === "sjs") return "Sjögren syndrome";
+    if (normalized === "sle" || normalized === "systemic lupus erythematosus") return "Systemic lupus erythematosus";
+    return value;
+  };
 
-  const previewGenes = genes.slice(0, 6);
-  const [selectedGene, setSelectedGene] = useState<string>(genes[0] ?? "IL7R");
-  const [response, setResponse] = useState<ViolinResponse | null>(null);
+  const groupLabel = mode === "single"
+    ? `Healthy, ${mapDiseaseLabel(disease)}`
+    : `Healthy, ${mapDiseaseLabel(leftDisease)}, ${mapDiseaseLabel(rightDisease)}`;
+
+  const [selectedGenes, setSelectedGenes] = useState<string[]>(genes.slice(0, 4));
+  const [responses, setResponses] = useState<Record<string, ViolinResponse>>({});
   const [error, setError] = useState<string | null>(null);
   const plotRef = useRef<HTMLDivElement | null>(null);
 
+
   useEffect(() => {
-    if (genes.length > 0 && !genes.includes(selectedGene)) {
-      setSelectedGene(genes[0]);
+    if (genes.length === 0) {
+      setSelectedGenes([]);
+      return;
     }
-  }, [genes, selectedGene]);
+    setSelectedGenes((prev) => {
+      const filtered = prev.filter((gene) => genes.includes(gene));
+      return filtered.length > 0 ? filtered : genes.slice(0, 4);
+    });
+  }, [genes]);
 
   useEffect(() => {
     let active = true;
     setError(null);
-    fetchViolin(apiBase, selectedGene, "disease", "quantile")
-      .then((res) => {
+    const activeGenes = selectedGenes.length > 0 ? selectedGenes : ["IL7R"];
+    Promise.all(activeGenes.map((gene) => fetchViolin(apiBase, gene, "disease", "quantile")))
+      .then((payloads) => {
         if (!active) return;
-        if (!res.ok) {
-          setError(res.error ?? "Unable to load expression summary");
-          setResponse(null);
+        const ok = payloads.every((res) => res.ok);
+        if (!ok) {
+          const firstError = payloads.find((res) => !res.ok);
+          setError(firstError?.error ?? "Unable to load expression summary");
+          setResponses({});
           return;
         }
-        setResponse(res);
+        const next: Record<string, ViolinResponse> = {};
+        payloads.forEach((res, idx) => {
+          next[activeGenes[idx]] = res;
+        });
+        setResponses(next);
       })
       .catch((err) => {
         if (!active) return;
         setError(String((err as Error).message ?? err));
-        setResponse(null);
+        setResponses({});
       });
     return () => {
       active = false;
     };
-  }, [apiBase, selectedGene]);
-
-  const summaries = useMemo(() => {
-    if (!response?.ok || !response.groups || !response.quantiles) return [];
-    return response.groups.map((label, index) => ({
-      label,
-      quantiles: response.quantiles![index],
-    }));
-  }, [response]);
+  }, [apiBase, selectedGenes]);
 
   const plotTrace = useMemo(() => {
-    if (!summaries.length) return [];
-    return [
-      {
+    const genesToPlot = selectedGenes.length > 0 ? selectedGenes : ["IL7R"];
+    return genesToPlot.flatMap((gene) => {
+      const res = responses[gene];
+      if (!res?.ok || !res.groups || !res.quantiles) return [];
+      const quantiles = res.quantiles ?? [];
+      return {
         type: "box",
-        name: selectedGene,
-        x: summaries.map((s) => s.label),
-        q1: summaries.map((s) => s.quantiles?.q1 ?? null),
-        median: summaries.map((s) => s.quantiles?.median ?? null),
-        q3: summaries.map((s) => s.quantiles?.q3 ?? null),
-        lowerfence: summaries.map((s) => s.quantiles?.min ?? null),
-        upperfence: summaries.map((s) => s.quantiles?.max ?? null),
-        marker: { color: "#2563eb" },
-      },
-    ];
-  }, [summaries, selectedGene]);
+        name: gene,
+        x: res.groups.map((group) => mapDiseaseLabel(group)),
+        q1: quantiles.map((q) => q?.q1 ?? null),
+        median: quantiles.map((q) => q?.median ?? null),
+        q3: quantiles.map((q) => q?.q3 ?? null),
+        lowerfence: quantiles.map((q) => q?.min ?? null),
+        upperfence: quantiles.map((q) => q?.max ?? null),
+      };
+    });
+  }, [responses, selectedGenes]);
 
   useEffect(() => {
     if (!plotRef.current || !window.Plotly || plotTrace.length === 0) return;
@@ -102,34 +117,36 @@ export default function ExpressionPlaceholder({
           <div className="muted small">Per-cell distributions for selected gene(s).</div>
           <div className="muted small">Groups: {groupLabel}</div>
         </div>
-        <div className="muted small">Gene: {selectedGene}</div>
+        <div className="muted small">Genes: {selectedGenes.length > 0 ? selectedGenes.join(", ") : "IL7R"}</div>
       </div>
 
       <div className="row gap top">
-        <div className="field">
-          <label className="muted small">Gene</label>
-          <select
-            className="select"
-            value={selectedGene}
-            onChange={(event) => setSelectedGene(event.target.value)}
-          >
-            {(genes.length > 0 ? genes : ["IL7R"]).map((gene) => (
-              <option key={gene} value={gene}>{gene}</option>
-            ))}
-          </select>
-        </div>
         <div className="field grow">
-          <label className="muted small">Selected genes (preview)</label>
-          <div className="scroll-box">
-            {previewGenes.length > 0 ? (
-              <ul>
-                {previewGenes.map((gene) => (
-                  <li key={gene}>{gene}</li>
-                ))}
-              </ul>
-            ) : (
-              <div className="muted small">No genes selected yet.</div>
-            )}
+          <label className="muted small">Genes (select up to 4)</label>
+          <div className="scroll-box options">
+            <div className="option-list">
+              <div className="option-actions">
+                <span className="muted small">{selectedGenes.length} selected</span>
+              </div>
+              {(genes.length > 0 ? genes : ["IL7R"]).map((gene) => (
+                <label key={gene} className="option-row">
+                  <input
+                    type="checkbox"
+                    checked={selectedGenes.includes(gene)}
+                    onChange={() => {
+                      setSelectedGenes((prev) => {
+                        if (prev.includes(gene)) {
+                          return prev.filter((item) => item !== gene);
+                        }
+                        if (prev.length >= 4) return prev;
+                        return [...prev, gene];
+                      });
+                    }}
+                  />
+                  <span>{gene}</span>
+                </label>
+              ))}
+            </div>
           </div>
         </div>
       </div>

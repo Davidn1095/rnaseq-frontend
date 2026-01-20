@@ -3,21 +3,25 @@ import type { CompositionResponse } from "../../lib/types";
 import { DEFAULT_RESOLVED_BASE, fetchComposition } from "../../lib/api";
 import { getStoredApiBase } from "../../lib/storage";
 
-type CompositionPlaceholderProps = {
-  groupBy: "disease" | "accession";
-  onGroupByChange: (next: "disease" | "accession") => void;
-};
-
-export default function CompositionPlaceholder({ groupBy, onGroupByChange }: CompositionPlaceholderProps) {
+export default function CompositionPlaceholder() {
   const apiBase = getStoredApiBase() ?? DEFAULT_RESOLVED_BASE;
   const [response, setResponse] = useState<CompositionResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const plotRef = useRef<HTMLDivElement | null>(null);
 
+  const mapDiseaseLabel = (value: string) => {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "normal") return "Healthy";
+    if (normalized === "ra" || normalized === "rheumatoid arthritis") return "Rheumatoid arthritis";
+    if (normalized === "sjs") return "Sjögren syndrome";
+    if (normalized === "sle" || normalized === "systemic lupus erythematosus") return "Systemic lupus erythematosus";
+    return value;
+  };
+
   useEffect(() => {
     let active = true;
     setError(null);
-    fetchComposition(apiBase, groupBy)
+    fetchComposition(apiBase, "disease")
       .then((res) => {
         if (!active) return;
         if (!res.ok) {
@@ -35,17 +39,31 @@ export default function CompositionPlaceholder({ groupBy, onGroupByChange }: Com
     return () => {
       active = false;
     };
-  }, [apiBase, groupBy]);
+  }, [apiBase]);
 
   const traces = useMemo(() => {
     if (!response?.ok || !response.groups || !response.cell_types || !response.counts) return [];
-    const groups = response.groups;
-    const counts = response.counts;
+    const mappedGroups = response.groups.map((group) => mapDiseaseLabel(group));
+    const mergedIndex: Record<string, number> = {};
+    const mergedGroups: string[] = [];
+    mappedGroups.forEach((label) => {
+      if (mergedIndex[label] === undefined) {
+        mergedIndex[label] = mergedGroups.length;
+        mergedGroups.push(label);
+      }
+    });
+    const mergedCounts = mergedGroups.map(() => Array(response.cell_types!.length).fill(0));
+    response.counts.forEach((row, rowIdx) => {
+      const target = mergedIndex[mappedGroups[rowIdx]];
+      row.forEach((value, cellIdx) => {
+        mergedCounts[target][cellIdx] += value ?? 0;
+      });
+    });
     return response.cell_types.map((cellType, idx) => ({
       type: "bar",
       name: cellType,
-      x: groups,
-      y: counts.map((row) => row[idx] ?? 0),
+      x: mergedGroups,
+      y: mergedCounts.map((row) => row[idx] ?? 0),
     }));
   }, [response]);
 
@@ -67,17 +85,6 @@ export default function CompositionPlaceholder({ groupBy, onGroupByChange }: Com
         <div>
           <div className="h3">Composition</div>
           <div className="muted small">Cell type composition overview</div>
-        </div>
-        <div className="field">
-          <label className="muted small">Group by</label>
-          <select
-            className="select"
-            value={groupBy}
-            onChange={(event) => onGroupByChange(event.target.value as "disease" | "accession")}
-          >
-            <option value="disease">Disease</option>
-            <option value="accession">Accession</option>
-          </select>
         </div>
       </div>
       {error ? <div className="error-banner">{error}</div> : null}

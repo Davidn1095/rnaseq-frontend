@@ -15,10 +15,19 @@ export default function ViolinPlaceholder({ genes, groupBy = "cell_type" }: Viol
   const [error, setError] = useState<string | null>(null);
   const plotRef = useRef<HTMLDivElement | null>(null);
 
+  const mapDiseaseLabel = (value: string) => {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "normal") return "Healthy";
+    if (normalized === "ra" || normalized === "rheumatoid arthritis") return "Rheumatoid arthritis";
+    if (normalized === "sjs") return "Sjögren syndrome";
+    if (normalized === "sle" || normalized === "systemic lupus erythematosus") return "Systemic lupus erythematosus";
+    return value;
+  };
+
   useEffect(() => {
     let active = true;
     setError(null);
-    fetchViolin(apiBase, gene, groupBy, "quantile")
+    fetchViolin(apiBase, gene, groupBy, "hist")
       .then((res) => {
         if (!active) return;
         if (!res.ok) {
@@ -38,38 +47,40 @@ export default function ViolinPlaceholder({ genes, groupBy = "cell_type" }: Viol
     };
   }, [apiBase, gene, groupBy]);
 
-  const rows = useMemo(() => {
-    if (!response?.ok || !response.groups || !response.quantiles) return [];
-    return response.groups.map((label, index) => ({
-      label,
-      quantiles: response.quantiles![index],
-    }));
-  }, [response]);
-
   const plotTrace = useMemo(() => {
-    if (!rows.length) return [];
-    return [
-      {
-        type: "box",
-        name: gene,
-        x: rows.map((row) => row.label),
-        q1: rows.map((row) => row.quantiles?.q1 ?? null),
-        median: rows.map((row) => row.quantiles?.median ?? null),
-        q3: rows.map((row) => row.quantiles?.q3 ?? null),
-        lowerfence: rows.map((row) => row.quantiles?.min ?? null),
-        upperfence: rows.map((row) => row.quantiles?.max ?? null),
-        marker: { color: "#6366f1" },
-      },
-    ];
-  }, [rows, gene]);
+    if (!response?.ok || !response.groups || !response.bins || !response.counts) return [];
+    const bins = response.bins;
+    const midpoints = bins.slice(0, -1).map((start, idx) => (start + bins[idx + 1]) / 2);
+    const maxSamples = 2000;
+    return response.groups.map((label, idx) => {
+      const counts = response.counts?.[idx] ?? [];
+      const total = counts.reduce((sum, val) => sum + val, 0) || 1;
+      const samples: number[] = [];
+      counts.forEach((count, binIdx) => {
+        const n = Math.round((count / total) * maxSamples);
+        for (let i = 0; i < n; i += 1) {
+          samples.push(midpoints[binIdx]);
+        }
+      });
+      return {
+        type: "violin",
+        name: groupBy === "disease" ? mapDiseaseLabel(label) : label,
+        y: samples,
+        box: { visible: false },
+        meanline: { visible: false },
+        points: false,
+      };
+    });
+  }, [response, groupBy]);
 
   useEffect(() => {
     if (!plotRef.current || !window.Plotly || plotTrace.length === 0) return;
     const layout = {
-      margin: { l: 60, r: 20, t: 10, b: 90 },
+      margin: { l: 60, r: 20, t: 10, b: 120 },
       height: 520,
       yaxis: { title: "Expression" },
-      xaxis: { automargin: true },
+      xaxis: { automargin: true, tickangle: -45 },
+      violinmode: "group",
     };
     window.Plotly.react(plotRef.current, plotTrace, layout, { displayModeBar: false, responsive: true });
   }, [plotTrace]);
@@ -80,7 +91,7 @@ export default function ViolinPlaceholder({ genes, groupBy = "cell_type" }: Viol
         <div>
           <div className="h3">Violin</div>
           <div className="muted small">
-            Distributions rendered from backend histograms or quantiles (not raw per-cell vectors).
+            Distributions rendered from backend histograms (not raw per-cell vectors).
           </div>
           <div className="muted small">Gene: {gene} · Group by: {groupBy}</div>
         </div>

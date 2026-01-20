@@ -50,11 +50,18 @@ export async function fetchMarkers(apiBase: string, panel: string): Promise<Mark
   return fetchJson<MarkersResponse>(url.toString());
 }
 
-export async function fetchUmap(apiBase: string, disease?: string | null): Promise<UmapResponse> {
+export async function fetchUmap(
+  apiBase: string,
+  disease?: string | null,
+  maxPoints?: number,
+): Promise<UmapResponse> {
   const base = stripTrailingSlash(apiBase);
   const url = new URL(`${base}/atlas/umap`);
   if (disease) {
     url.searchParams.set("disease", disease);
+  }
+  if (maxPoints) {
+    url.searchParams.set("max_points", String(maxPoints));
   }
   return fetchJson<UmapResponse>(url.toString());
 }
