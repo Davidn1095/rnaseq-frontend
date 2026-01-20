@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Manifest, Mode } from "../lib/types";
-import UMAPPlaceholder from "./PlaceholderPanels/UMAPPlaceholder";
 import DotPlotPlaceholder from "./PlaceholderPanels/DotPlotPlaceholder";
 import CompositionPlaceholder from "./PlaceholderPanels/CompositionPlaceholder";
 import VolcanoPlaceholder from "./PlaceholderPanels/VolcanoPlaceholder";
@@ -40,18 +39,17 @@ export default function Visualization({
   markersLoading,
 }: VisualizationProps) {
   const [tab, setTab] = useState<
-    "umap" | "expression" | "dot" | "composition" | "volcano" | "overlap" | "violin" | "concordance"
-  >("umap");
+    "expression" | "dot" | "composition" | "volcano" | "overlap" | "violin" | "concordance"
+  >("expression");
 
   useEffect(() => {
     if (mode === "single" && (tab === "overlap" || tab === "concordance")) {
-      setTab("umap");
+      setTab("expression");
     }
   }, [mode, tab]);
 
   const tabLabels = useMemo(() => {
     const base = [
-      { id: "umap", label: "UMAP" },
       { id: "expression", label: "Expression" },
       { id: "dot", label: "Dot plot" },
       { id: "composition", label: "Composition" },
@@ -100,16 +98,6 @@ export default function Visualization({
         </div>
 
         <ErrorBoundary fallbackTitle="Visualization error" fallbackMessage="Unable to render this panel.">
-          {tab === "umap" ? (
-            <UMAPPlaceholder
-              mode={mode}
-              selectedCellTypes={selectedCellTypes}
-              disease={disease}
-              leftDisease={leftDisease}
-              rightDisease={rightDisease}
-            />
-          ) : null}
-
           {tab === "dot" ? (
             <DotPlotPlaceholder
               mode={mode}
