@@ -122,8 +122,9 @@ export default function AnalysisSetup({
         <div className="analysis-stack">
           <div className="row gap">
             <div className="field">
-              <div className="multi-select">
-                <div className="multi-select-actions">
+              <div className="row between">
+                <label className="label">Cell types</label>
+                <div className="row gap-sm">
                   <button type="button" className="btn btn-sm ghost" onClick={handleSelectAllCellTypes}>
                     Select all
                   </button>
@@ -131,6 +132,7 @@ export default function AnalysisSetup({
                     Clear
                   </button>
                 </div>
+              </div>
               <div className="multi-select-options grouped">
                 {groupedCellTypes.map(([groupName, items]) => {
                   const allSelected = items.every((item) => selectedCellTypes.includes(item));
