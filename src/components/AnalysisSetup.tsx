@@ -154,15 +154,17 @@ export default function AnalysisSetup({
                       ) : (
                         <>
                           <div className="group-header">
-                            <span className="group-label">{groupName}</span>
-                            <input
-                              type="checkbox"
-                              checked={allSelected}
-                              ref={(el) => {
-                                if (el) el.indeterminate = someSelected && !allSelected;
-                              }}
-                              onChange={() => handleToggleGroup(items)}
-                            />
+                            <span className="group-label">
+                              {groupName}
+                              <input
+                                type="checkbox"
+                                checked={allSelected}
+                                ref={(el) => {
+                                  if (el) el.indeterminate = someSelected && !allSelected;
+                                }}
+                                onChange={() => handleToggleGroup(items)}
+                              />
+                            </span>
                           </div>
                           {items.map((cellType) => (
                             <div key={cellType} className="multi-select-option">
