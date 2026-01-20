@@ -152,16 +152,7 @@ export default function App() {
       </div>
 
       <div className="grid">
-        <AnalysisSetup
-          manifest={manifest}
-          isLoading={isLoading}
-          selectedCellTypes={selectedCellTypes}
-          onSelectedCellTypesChange={setSelectedCellTypes}
-          leftDisease={leftDisease}
-          rightDisease={rightDisease}
-          onLeftDiseaseChange={handleLeftDiseaseChange}
-          onRightDiseaseChange={handleRightDiseaseChange}
-        />
+        <AnalysisSetup />
         <Visualization
           manifest={manifest}
           isLoading={isLoading}
