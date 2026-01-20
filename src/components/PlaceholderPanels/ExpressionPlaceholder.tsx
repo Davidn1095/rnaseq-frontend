@@ -1,4 +1,7 @@
-import type { Mode } from "../../lib/types";
+import { useEffect, useMemo, useState } from "react";
+import type { Mode, ViolinResponse } from "../../lib/types";
+import { DEFAULT_RESOLVED_BASE, fetchViolin } from "../../lib/api";
+import { getStoredApiBase } from "../../lib/storage";
 
 type ExpressionPlaceholderProps = {
   mode: Mode;
@@ -15,11 +18,46 @@ export default function ExpressionPlaceholder({
   rightDisease,
   genes,
 }: ExpressionPlaceholderProps) {
+  const apiBase = getStoredApiBase() ?? DEFAULT_RESOLVED_BASE;
   const groupLabel = mode === "single"
     ? `Healthy, ${disease}`
     : `Healthy, ${leftDisease}, ${rightDisease}`;
 
   const previewGenes = genes.slice(0, 6);
+  const primaryGene = previewGenes[0] ?? "IL7R";
+  const [response, setResponse] = useState<ViolinResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setError(null);
+    fetchViolin(apiBase, primaryGene, "disease", "quantile")
+      .then((res) => {
+        if (!active) return;
+        if (!res.ok) {
+          setError(res.error ?? "Unable to load expression summary");
+          setResponse(null);
+          return;
+        }
+        setResponse(res);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setError(String((err as Error).message ?? err));
+        setResponse(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [apiBase, primaryGene]);
+
+  const summaries = useMemo(() => {
+    if (!response?.ok || !response.groups || !response.quantiles) return [];
+    return response.groups.map((label, index) => ({
+      label,
+      quantiles: response.quantiles![index],
+    }));
+  }, [response]);
 
   return (
     <div className="panel">
@@ -29,7 +67,7 @@ export default function ExpressionPlaceholder({
           <div className="muted small">Per-cell distributions for selected gene(s).</div>
           <div className="muted small">Groups: {groupLabel}</div>
         </div>
-        <div className="muted small">Violin/ridge plot placeholder.</div>
+        <div className="muted small">Gene: {primaryGene}</div>
       </div>
 
       <div className="row gap top">
@@ -49,13 +87,34 @@ export default function ExpressionPlaceholder({
         </div>
       </div>
 
-      <svg className="placeholder-svg" viewBox="0 0 420 200" aria-hidden="true">
-        <rect x="30" y="30" width="360" height="130" rx="12" fill="#f8fafc" stroke="#e2e8f0" />
-        <path d="M60 150 C90 120 120 90 150 70 C180 50 210 70 240 95 C270 120 300 130 330 140" stroke="#94a3b8" strokeWidth="3" fill="none" />
-        <path d="M70 145 C100 120 130 95 160 80 C190 65 220 80 250 100 C280 120 305 130 340 138" stroke="#cbd5f5" strokeWidth="3" fill="none" />
-        <text x="40" y="185" fill="#64748b" fontSize="12">Expression →</text>
-        <text x="15" y="110" fill="#64748b" fontSize="12" transform="rotate(-90 15 110)">Cells</text>
-      </svg>
+      {error ? <div className="error-banner">{error}</div> : null}
+
+      <div className="table-wrap">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Group</th>
+              <th>Min</th>
+              <th>Q1</th>
+              <th>Median</th>
+              <th>Q3</th>
+              <th>Max</th>
+            </tr>
+          </thead>
+          <tbody>
+            {summaries.map((summary) => (
+              <tr key={summary.label}>
+                <td>{summary.label}</td>
+                <td>{summary.quantiles?.min ?? "—"}</td>
+                <td>{summary.quantiles?.q1 ?? "—"}</td>
+                <td>{summary.quantiles?.median ?? "—"}</td>
+                <td>{summary.quantiles?.q3 ?? "—"}</td>
+                <td>{summary.quantiles?.max ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

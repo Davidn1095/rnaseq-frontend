@@ -69,30 +69,7 @@ export default function Visualization({
     return base;
   }, [mode]);
 
-  const violinSummaries = useMemo(() => {
-    if (mode === "single") {
-      return [
-        {
-          label: "Healthy",
-          quantiles: { min: 0.2, q1: 0.6, median: 1.1, q3: 1.8, max: 2.6 },
-        },
-        {
-          label: disease,
-          quantiles: { min: 0.1, q1: 0.8, median: 1.4, q3: 2.1, max: 3.0 },
-        },
-      ];
-    }
-    return [
-      {
-        label: leftDisease,
-        quantiles: { min: 0.3, q1: 0.9, median: 1.5, q3: 2.2, max: 3.3 },
-      },
-      {
-        label: rightDisease,
-        quantiles: { min: 0.2, q1: 0.7, median: 1.2, q3: 1.9, max: 2.8 },
-      },
-    ];
-  }, [mode, disease, leftDisease, rightDisease]);
+  const violinGenes = useMemo(() => markerGenes.length > 0 ? markerGenes : ["IL7R"], [markerGenes]);
 
   if (!manifest || isLoading) {
     return (
@@ -190,7 +167,7 @@ export default function Visualization({
           ) : null}
 
           {tab === "violin" ? (
-            <ViolinPlaceholder summaries={violinSummaries} />
+            <ViolinPlaceholder genes={violinGenes} />
           ) : null}
 
           {tab === "volcano" ? (

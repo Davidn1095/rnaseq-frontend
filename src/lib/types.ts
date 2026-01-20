@@ -60,3 +60,53 @@ export type ViolinSummary = {
     max: number;
   };
 };
+export type UmapResponse = {
+  ok: boolean;
+  filters?: {
+    disease?: string | null;
+    cell_type?: string | null;
+  };
+  color_key?: string;
+  x?: number[];
+  y?: number[];
+  cell_id?: string[];
+  color?: string[];
+  value_key?: string;
+  value?: Array<number | null>;
+  error?: string;
+  available?: string[];
+};
+
+export type DotplotResponse = {
+  ok: boolean;
+  group_by?: string;
+  groups?: string[];
+  genes?: string[];
+  avg?: number[][];
+  pct?: number[][];
+  error?: string;
+  unknown?: string[];
+};
+
+export type ViolinResponse = {
+  ok: boolean;
+  gene?: string;
+  group_by?: string;
+  kind?: "hist" | "quantile";
+  groups?: string[];
+  bins?: number[];
+  counts?: number[][];
+  quantiles?: Array<{ min: number; q1: number; median: number; q3: number; max: number }>;
+  error?: string;
+  available?: string[];
+};
+
+export type CompositionResponse = {
+  ok: boolean;
+  group_by?: string;
+  groups?: string[];
+  cell_types?: string[];
+  counts?: number[][];
+  error?: string;
+  available?: string[];
+};

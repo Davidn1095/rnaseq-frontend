@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Mode } from "../../lib/types";
+import type { UmapResponse } from "../../lib/types";
+import { DEFAULT_RESOLVED_BASE, fetchUmap } from "../../lib/api";
+import { getStoredApiBase } from "../../lib/storage";
 
 type UMAPPlaceholderProps = {
   mode: Mode;
@@ -18,41 +21,54 @@ export default function UMAPPlaceholder({
   leftDisease,
   rightDisease,
 }: UMAPPlaceholderProps) {
+  const apiBase = getStoredApiBase() ?? DEFAULT_RESOLVED_BASE;
   const cohortLabel = mode === "single" ? disease : `${leftDisease} + ${rightDisease}`;
   const cellTypeLabel = selectedCellTypes.length > 0 ? selectedCellTypes.join(", ") : "None selected";
   const plotRef = useRef<HTMLDivElement | null>(null);
-  const clusterTraces = useMemo(() => {
-    const totalPoints = Math.max(320, Math.min(1600, cohortAccessionCount * 40));
-    const pointsPerCluster = Math.max(80, Math.floor(totalPoints / 3));
-    const clusters = [
-      { label: "Disease", color: "#60a5fa", center: [-2.2, 1.6] },
-      { label: "Healthy", color: "#93c5fd", center: [1.4, 2.3] },
-      { label: "Other", color: "#cbd5f5", center: [0.8, -1.8] },
-    ];
+  const [umap, setUmap] = useState<UmapResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-    return clusters.map((cluster) => {
-      const x = Array.from({ length: pointsPerCluster }, (_, index) => {
-        const jitter = (index % 7) * 0.05;
-        return cluster.center[0] + Math.cos(index / 10) * 1.4 + jitter;
+  useEffect(() => {
+    let active = true;
+    setError(null);
+    fetchUmap(apiBase, mode === "single" ? disease : null)
+      .then((res) => {
+        if (!active) return;
+        if (!res.ok) {
+          setError(res.error ?? "Unable to load UMAP");
+          setUmap(null);
+          return;
+        }
+        setUmap(res);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setError(String((err as Error).message ?? err));
+        setUmap(null);
       });
-      const y = Array.from({ length: pointsPerCluster }, (_, index) => {
-        const jitter = ((index * 13) % 11) * 0.04;
-        return cluster.center[1] + Math.sin(index / 12) * 1.2 + jitter;
-      });
+    return () => {
+      active = false;
+    };
+  }, [apiBase, disease, mode]);
+
+  const clusterTraces = useMemo(() => {
+    if (!umap?.x || !umap?.y || !umap?.color) return [];
+    const categories = Array.from(new Set(umap.color));
+    return categories.map((label) => {
+      const idx = umap.color!.map((v, i) => (v === label ? i : -1)).filter((i) => i >= 0);
       return {
         type: "scattergl",
         mode: "markers",
-        name: cluster.label,
-        x,
-        y,
+        name: label,
+        x: idx.map((i) => umap.x![i]),
+        y: idx.map((i) => umap.y![i]),
         marker: {
           size: 5,
-          color: cluster.color,
           opacity: 0.85,
         },
       };
     });
-  }, [cohortAccessionCount]);
+  }, [umap]);
   const layout = useMemo(
     () => ({
       margin: { l: 40, r: 20, t: 10, b: 40 },
@@ -69,6 +85,7 @@ export default function UMAPPlaceholder({
 
   useEffect(() => {
     if (!plotRef.current || !window.Plotly) return;
+    if (clusterTraces.length === 0) return;
     window.Plotly.react(plotRef.current, clusterTraces, layout, config);
   }, [clusterTraces, layout, config]);
 
@@ -89,6 +106,7 @@ export default function UMAPPlaceholder({
           <div className="h3">UMAP</div>
           <div className="muted small">Cohort: {cohortLabel} · Cell types: {cellTypeLabel}</div>
           <div className="muted small">Accessions in cohort: {cohortAccessionCount}</div>
+          {error ? <div className="muted small">UMAP error: {error}</div> : null}
         </div>
         <div className="legend">
           <span className="legend-item"><span className="dot" />Disease</span>

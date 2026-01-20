@@ -1,4 +1,4 @@
-import type { DeResponse, Manifest, MarkersResponse } from "./types";
+import type { CompositionResponse, DeResponse, DotplotResponse, Manifest, MarkersResponse, UmapResponse, ViolinResponse } from "./types";
 
 export const DEFAULT_API_BASE = "https://rnaseq-backend-y654q6wo2q-ew.a.run.app";
 export const ENV_API_BASE = import.meta.env.VITE_API_BASE_URL as string | undefined;
@@ -48,6 +48,44 @@ export async function fetchMarkers(apiBase: string, panel: string): Promise<Mark
   const url = new URL(`${base}/atlas/markers`);
   url.searchParams.set("panel", panel);
   return fetchJson<MarkersResponse>(url.toString());
+}
+
+export async function fetchUmap(apiBase: string, disease?: string | null): Promise<UmapResponse> {
+  const base = stripTrailingSlash(apiBase);
+  const url = new URL(`${base}/atlas/umap`);
+  if (disease) {
+    url.searchParams.set("disease", disease);
+  }
+  return fetchJson<UmapResponse>(url.toString());
+}
+
+export async function fetchDotplot(apiBase: string, genes: string[], groupBy = "cell_type"): Promise<DotplotResponse> {
+  const base = stripTrailingSlash(apiBase);
+  const url = new URL(`${base}/atlas/dotplot`);
+  url.searchParams.set("genes", genes.join(","));
+  url.searchParams.set("group_by", groupBy);
+  return fetchJson<DotplotResponse>(url.toString());
+}
+
+export async function fetchViolin(
+  apiBase: string,
+  gene: string,
+  groupBy = "cell_type",
+  kind: "hist" | "quantile" = "quantile",
+): Promise<ViolinResponse> {
+  const base = stripTrailingSlash(apiBase);
+  const url = new URL(`${base}/atlas/violin`);
+  url.searchParams.set("gene", gene);
+  url.searchParams.set("group_by", groupBy);
+  url.searchParams.set("kind", kind);
+  return fetchJson<ViolinResponse>(url.toString());
+}
+
+export async function fetchComposition(apiBase: string, groupBy = "disease"): Promise<CompositionResponse> {
+  const base = stripTrailingSlash(apiBase);
+  const url = new URL(`${base}/atlas/composition`);
+  url.searchParams.set("group_by", groupBy);
+  return fetchJson<CompositionResponse>(url.toString());
 }
 
 export async function fetchDeByDisease(

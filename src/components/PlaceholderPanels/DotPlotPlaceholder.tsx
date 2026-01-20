@@ -1,4 +1,7 @@
-import type { Mode } from "../../lib/types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { DotplotResponse, Mode } from "../../lib/types";
+import { DEFAULT_RESOLVED_BASE, fetchDotplot } from "../../lib/api";
+import { getStoredApiBase } from "../../lib/storage";
 
 type DotPlotPlaceholderProps = {
   mode: Mode;
@@ -23,8 +26,77 @@ export default function DotPlotPlaceholder({
   genes,
   loadingGenes,
 }: DotPlotPlaceholderProps) {
+  const apiBase = getStoredApiBase() ?? DEFAULT_RESOLVED_BASE;
+  const [dotplot, setDotplot] = useState<DotplotResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const plotRef = useRef<HTMLDivElement | null>(null);
   const previewGenes = genes.slice(0, 20);
   const diseaseLabel = mode === "single" ? disease : `${leftDisease} and ${rightDisease}`;
+
+  useEffect(() => {
+    if (previewGenes.length === 0) return;
+    let active = true;
+    setError(null);
+    fetchDotplot(apiBase, previewGenes)
+      .then((res) => {
+        if (!active) return;
+        if (!res.ok) {
+          setError(res.error ?? "Unable to load dotplot");
+          setDotplot(null);
+          return;
+        }
+        setDotplot(res);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setError(String((err as Error).message ?? err));
+        setDotplot(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [apiBase, previewGenes]);
+
+  const traces = useMemo(() => {
+    if (!dotplot?.groups || !dotplot.genes || !dotplot.avg || !dotplot.pct) return [];
+    const points = [] as Array<{ x: string; y: string; avg: number; pct: number }>;
+    dotplot.genes.forEach((gene, gi) => {
+      dotplot.groups!.forEach((group, gi2) => {
+        points.push({
+          x: gene,
+          y: group,
+          avg: dotplot.avg![gi][gi2],
+          pct: dotplot.pct![gi][gi2],
+        });
+      });
+    });
+    return [
+      {
+        type: "scatter",
+        mode: "markers",
+        x: points.map((p) => p.x),
+        y: points.map((p) => p.y),
+        marker: {
+          size: points.map((p) => 6 + p.pct * 30),
+          color: points.map((p) => p.avg),
+          colorscale: "Blues",
+          showscale: true,
+          colorbar: { title: "Avg" },
+        },
+      },
+    ];
+  }, [dotplot]);
+
+  useEffect(() => {
+    if (!plotRef.current || !window.Plotly || traces.length === 0) return;
+    const layout = {
+      margin: { l: 120, r: 30, t: 10, b: 70 },
+      xaxis: { automargin: true },
+      yaxis: { automargin: true },
+      height: 420,
+    };
+    window.Plotly.react(plotRef.current, traces, layout, { displayModeBar: false, responsive: true });
+  }, [traces]);
 
   return (
     <div className="panel">
@@ -66,11 +138,9 @@ export default function DotPlotPlaceholder({
         </div>
       </div>
 
-      <svg className="placeholder-svg" viewBox="0 0 420 200" aria-hidden="true">
-        <rect x="30" y="30" width="360" height="130" rx="12" fill="#f8fafc" stroke="#e2e8f0" />
-        <text x="40" y="185" fill="#64748b" fontSize="12">Genes →</text>
-        <text x="15" y="110" fill="#64748b" fontSize="12" transform="rotate(-90 15 110)">Cell types</text>
-      </svg>
+      {error ? <div className="error-banner">{error}</div> : null}
+
+      <div className="plot-frame" ref={plotRef} />
     </div>
   );
 }
