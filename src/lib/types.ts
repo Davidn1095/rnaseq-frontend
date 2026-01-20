@@ -88,6 +88,19 @@ export type DotplotResponse = {
   unknown?: string[];
 };
 
+export type DotplotByDiseaseResponse = {
+  ok: boolean;
+  group_by?: string;
+  genes?: string[];
+  diseases?: Record<string, {
+    groups: string[];
+    genes: string[];
+    avg: number[][];
+    pct: number[][];
+  }>;
+  error?: string;
+};
+
 export type ViolinResponse = {
   ok: boolean;
   gene?: string;

@@ -1,4 +1,4 @@
-import type { CompositionResponse, DeResponse, DotplotResponse, Manifest, MarkersResponse, UmapResponse, ViolinResponse } from "./types";
+import type { CompositionResponse, DeResponse, DotplotByDiseaseResponse, DotplotResponse, Manifest, MarkersResponse, UmapResponse, ViolinResponse } from "./types";
 
 export const DEFAULT_API_BASE = "https://rnaseq-backend-y654q6wo2q-ew.a.run.app";
 export const ENV_API_BASE = import.meta.env.VITE_API_BASE_URL as string | undefined;
@@ -76,6 +76,14 @@ export async function fetchDotplot(apiBase: string, genes: string[], groupBy = "
   url.searchParams.set("genes", genes.join(","));
   url.searchParams.set("group_by", groupBy);
   return fetchJson<DotplotResponse>(url.toString());
+}
+
+export async function fetchDotplotByDisease(apiBase: string, genes: string[], groupBy = "cell_type"): Promise<DotplotByDiseaseResponse> {
+  const base = stripTrailingSlash(apiBase);
+  const url = new URL(`${base}/atlas/dotplot_by_disease`);
+  url.searchParams.set("genes", genes.join(","));
+  url.searchParams.set("group_by", groupBy);
+  return fetchJson<DotplotByDiseaseResponse>(url.toString());
 }
 
 export async function fetchViolin(

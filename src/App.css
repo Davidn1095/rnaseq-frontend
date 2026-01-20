@@ -960,6 +960,38 @@ body {
   font-size: 13px;
 }
 
+/* Composition stats */
+.composition-stats {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.composition-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-width: 120px;
+}
+
+.composition-stat-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.composition-stat-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
 @media (max-width: 980px) {
   .grid {
     grid-template-columns: 1fr;

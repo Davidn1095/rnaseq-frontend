@@ -5,7 +5,6 @@ import DotPlotFaceted from "./PlaceholderPanels/DotPlotFaceted";
 import CompositionPlaceholder from "./PlaceholderPanels/CompositionPlaceholder";
 import VolcanoPlaceholder from "./PlaceholderPanels/VolcanoPlaceholder";
 import OverlapPlaceholder from "./PlaceholderPanels/OverlapPlaceholder";
-import ViolinPlaceholder from "./PlaceholderPanels/ViolinPlaceholder";
 import ExpressionPlaceholder from "./PlaceholderPanels/ExpressionPlaceholder";
 import ConcordancePlaceholder from "./PlaceholderPanels/ConcordancePlaceholder";
 import ErrorBoundary from "./ErrorBoundary";
@@ -40,22 +39,21 @@ export default function Visualization({
   markersLoading,
 }: VisualizationProps) {
   const [tab, setTab] = useState<
-    "expression" | "dot" | "dotfaceted" | "composition" | "volcano" | "overlap" | "violin" | "concordance"
-  >("expression");
+    "composition" | "violin" | "dot" | "dotfaceted" | "volcano" | "overlap" | "concordance"
+  >("composition");
 
   useEffect(() => {
     if (mode === "single" && (tab === "overlap" || tab === "concordance")) {
-      setTab("expression");
+      setTab("composition");
     }
   }, [mode, tab]);
 
   const tabLabels = useMemo(() => {
     const base = [
-      { id: "expression", label: "Expression" },
-      { id: "dot", label: "Dot plot" },
-      { id: "dotfaceted", label: "Dot (faceted)" },
       { id: "composition", label: "Composition" },
       { id: "violin", label: "Violin" },
+      { id: "dot", label: "Dot plot" },
+      { id: "dotfaceted", label: "Dot (faceted)" },
       { id: "volcano", label: "Volcano" },
     ];
     if (mode === "compare") {
@@ -63,8 +61,6 @@ export default function Visualization({
     }
     return base;
   }, [mode]);
-
-  const violinGenes = useMemo(() => markerGenes.length > 0 ? markerGenes : ["IL7R"], [markerGenes]);
 
   if (!manifest || isLoading) {
     return (
@@ -128,11 +124,15 @@ export default function Visualization({
             />
           ) : null}
 
-          {tab === "expression" ? (
+          {tab === "composition" ? (
+            <CompositionPlaceholder />
+          ) : null}
+
+          {tab === "violin" ? (
             markerGenes.length === 0 || !disease || (mode === "compare" && (!leftDisease || !rightDisease)) ? (
               <div className="panel">
-                <div className="h3">Expression</div>
-                <div className="muted small">Expression: not computed yet</div>
+                <div className="h3">Violin</div>
+                <div className="muted small">Select genes to view expression distributions</div>
               </div>
             ) : (
               <ExpressionPlaceholder
@@ -143,14 +143,6 @@ export default function Visualization({
                 genes={markerGenes}
               />
             )
-          ) : null}
-
-          {tab === "composition" ? (
-            <CompositionPlaceholder />
-          ) : null}
-
-          {tab === "violin" ? (
-            <ViolinPlaceholder genes={violinGenes} groupBy="disease" />
           ) : null}
 
           {tab === "volcano" ? (

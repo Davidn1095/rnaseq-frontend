@@ -3,6 +3,18 @@ import type { Mode, ViolinResponse } from "../../lib/types";
 import { DEFAULT_RESOLVED_BASE, fetchViolin } from "../../lib/api";
 import { getStoredApiBase } from "../../lib/storage";
 
+// Color palette for genes
+const GENE_COLORS = [
+  "#2563eb", // blue
+  "#dc2626", // red
+  "#16a34a", // green
+  "#ea580c", // orange
+  "#9333ea", // purple
+  "#0891b2", // cyan
+  "#db2777", // pink
+  "#ca8a04", // yellow
+];
+
 type ExpressionPlaceholderProps = {
   mode: Mode;
   disease: string;
@@ -69,13 +81,13 @@ export default function ExpressionPlaceholder({
     let active = true;
     setError(null);
     const activeGenes = selectedGenes.length > 0 ? selectedGenes : ["IL7R"];
-    Promise.all(activeGenes.map((gene) => fetchViolin(apiBase, gene, "disease", "quantile")))
+    Promise.all(activeGenes.map((gene) => fetchViolin(apiBase, gene, "disease", "hist")))
       .then((payloads) => {
         if (!active) return;
         const ok = payloads.every((res) => res.ok);
         if (!ok) {
           const firstError = payloads.find((res) => !res.ok);
-          setError(firstError?.error ?? "Unable to load expression summary");
+          setError(firstError?.error ?? "Unable to load expression data");
           setResponses({});
           return;
         }
@@ -97,30 +109,65 @@ export default function ExpressionPlaceholder({
 
   const plotTrace = useMemo(() => {
     const genesToPlot = selectedGenes.length > 0 ? selectedGenes : ["IL7R"];
-    return genesToPlot.flatMap((gene) => {
+    const traces: Array<Record<string, unknown>> = [];
+
+    genesToPlot.forEach((gene, geneIdx) => {
       const res = responses[gene];
-      if (!res?.ok || !res.groups || !res.quantiles) return [];
-      const quantiles = res.quantiles ?? [];
-      return {
-        type: "box",
-        name: gene,
-        x: res.groups.map((group) => mapDiseaseLabel(group)),
-        q1: quantiles.map((q) => q?.q1 ?? null),
-        median: quantiles.map((q) => q?.median ?? null),
-        q3: quantiles.map((q) => q?.q3 ?? null),
-        lowerfence: quantiles.map((q) => q?.min ?? null),
-        upperfence: quantiles.map((q) => q?.max ?? null),
-      };
+      if (!res?.ok || !res.groups || !res.bins || !res.counts) return;
+
+      const bins = res.bins;
+      const midpoints = bins.slice(0, -1).map((start, idx) => (start + bins[idx + 1]) / 2);
+      const maxSamples = 2000;
+      const color = GENE_COLORS[geneIdx % GENE_COLORS.length];
+
+      res.groups.forEach((label, idx) => {
+        const counts = res.counts?.[idx] ?? [];
+        const total = counts.reduce((sum, val) => sum + val, 0) || 1;
+        const samples: number[] = [];
+        counts.forEach((count, binIdx) => {
+          const n = Math.round((count / total) * maxSamples);
+          for (let i = 0; i < n; i += 1) {
+            samples.push(midpoints[binIdx]);
+          }
+        });
+
+        traces.push({
+          type: "violin",
+          name: gene,
+          legendgroup: gene,
+          scalegroup: gene,
+          x: Array(samples.length).fill(mapDiseaseLabel(label)),
+          y: samples,
+          box: { visible: false },
+          meanline: { visible: true },
+          points: false,
+          line: { color },
+          fillcolor: color,
+          opacity: 0.7,
+          showlegend: idx === 0,
+        });
+      });
     });
+
+    return traces;
   }, [responses, selectedGenes]);
 
   useEffect(() => {
     if (!plotRef.current || !window.Plotly || plotTrace.length === 0) return;
     const layout = {
-      margin: { l: 60, r: 20, t: 10, b: 90 },
+      margin: { l: 60, r: 20, t: 10, b: 120 },
       height: 520,
       yaxis: { title: "Expression" },
-      xaxis: { automargin: true },
+      xaxis: { automargin: true, tickangle: -45 },
+      violinmode: "group",
+      violingap: 0.1,
+      violingroupgap: 0.05,
+      legend: {
+        orientation: "h" as const,
+        y: 1.1,
+        x: 0.5,
+        xanchor: "center" as const,
+      },
     };
     window.Plotly.react(plotRef.current, plotTrace, layout, { displayModeBar: false, responsive: true });
   }, [plotTrace]);
@@ -128,20 +175,32 @@ export default function ExpressionPlaceholder({
   return (
     <div className="panel">
       <div className="panel-header">
-        <div className="h3">Expression</div>
+        <div>
+          <div className="h3">Violin</div>
+          <div className="muted small">Expression distributions across diseases</div>
+        </div>
       </div>
 
       <div className="row gap top">
         <div className="field grow" ref={dropdownRef}>
-          <label className="muted small">Genes (select up to 4)</label>
+          <label className="muted small">Genes (select up to 8)</label>
           <div className="gene-select-container">
             <div className="gene-tags">
-              {selectedGenes.map((gene) => (
-                <span key={gene} className="gene-tag">
+              {selectedGenes.map((gene, idx) => (
+                <span
+                  key={gene}
+                  className="gene-tag"
+                  style={{
+                    backgroundColor: `${GENE_COLORS[idx % GENE_COLORS.length]}20`,
+                    color: GENE_COLORS[idx % GENE_COLORS.length],
+                    borderColor: GENE_COLORS[idx % GENE_COLORS.length],
+                  }}
+                >
                   {gene}
                   <button
                     type="button"
                     className="gene-tag-remove"
+                    style={{ color: GENE_COLORS[idx % GENE_COLORS.length] }}
                     onClick={() => setSelectedGenes((prev) => prev.filter((g) => g !== gene))}
                   >
                     ×
@@ -164,7 +223,7 @@ export default function ExpressionPlaceholder({
                 ) : (
                   filteredGenes.map((gene) => {
                     const isSelected = selectedGenes.includes(gene);
-                    const isDisabled = !isSelected && selectedGenes.length >= 4;
+                    const isDisabled = !isSelected && selectedGenes.length >= 8;
                     return (
                       <div
                         key={gene}
