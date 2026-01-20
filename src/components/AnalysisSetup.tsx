@@ -82,7 +82,8 @@ export default function AnalysisSetup({
 
     return Object.entries(groups)
       .map(([key, values]) => [key, values.sort((a, b) => a.localeCompare(b))] as const)
-      .filter(([, values]) => values.length > 0);
+      .filter(([, values]) => values.length > 0)
+      .sort(([, a], [, b]) => b.length - a.length);
   };
 
   const groupedCellTypes = groupCellTypes(cellTypes);
@@ -153,17 +154,15 @@ export default function AnalysisSetup({
                       ) : (
                         <>
                           <div className="group-header">
-                            <div className="group-toggle">
-                              <span className="group-label">{groupName}</span>
-                              <input
-                                type="checkbox"
-                                checked={allSelected}
-                                ref={(el) => {
-                                  if (el) el.indeterminate = someSelected && !allSelected;
-                                }}
-                                onChange={() => handleToggleGroup(items)}
-                              />
-                            </div>
+                            <span className="group-label">{groupName}</span>
+                            <input
+                              type="checkbox"
+                              checked={allSelected}
+                              ref={(el) => {
+                                if (el) el.indeterminate = someSelected && !allSelected;
+                              }}
+                              onChange={() => handleToggleGroup(items)}
+                            />
                           </div>
                           {items.map((cellType) => (
                             <div key={cellType} className="multi-select-option">
