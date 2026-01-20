@@ -195,6 +195,7 @@ export default function Visualization({
 
           {tab === "volcano" ? (
             <VolcanoPlaceholder
+              manifest={manifest}
               mode={mode}
               disease={disease}
               leftDisease={leftDisease}

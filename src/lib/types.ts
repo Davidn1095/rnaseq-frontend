@@ -28,6 +28,28 @@ export type MarkersResponse = {
   genes: string[];
 };
 
+export type DeRow = {
+  gene: string;
+  logfc: number;
+  p_val?: number;
+  p_val_adj?: number;
+  padj?: number;
+};
+
+export type DeResponse = {
+  ok: boolean;
+  contrast?: string;
+  cell_type?: string;
+  total?: number;
+  limit?: number;
+  offset?: number;
+  rows?: DeRow[];
+  top_up?: DeRow[];
+  top_down?: DeRow[];
+  error?: string;
+  available?: string[];
+};
+
 export type ViolinSummary = {
   label: string;
   histogram?: {
