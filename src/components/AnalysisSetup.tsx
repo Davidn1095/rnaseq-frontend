@@ -34,6 +34,14 @@ export default function AnalysisSetup({
   const cellTypes = manifest?.cell_types ?? [];
   const allCellTypesSelected = cellTypes.length > 0 && selectedCellTypes.length === cellTypes.length;
 
+  const diseaseLabel = (value: string) => {
+    const normalized = value.trim();
+    if (normalized === "RA") return "Rheumatoid arthritis";
+    if (normalized === "SjS") return "Sjögren syndrome";
+    if (normalized === "SLE") return "Systemic lupus erythematosus";
+    return value;
+  };
+
   const groupCellTypes = (items: string[]) => {
     const groups: Record<string, string[]> = {
       "T cells": [],
@@ -142,7 +150,7 @@ export default function AnalysisSetup({
                   ) : (
                     <select className="select" value={disease} onChange={(event) => onDiseaseChange(event.target.value)}>
                       {nonHealthyDiseases.map((item) => (
-                        <option key={item} value={item}>{item}</option>
+                        <option key={item} value={item}>{diseaseLabel(item)}</option>
                       ))}
                     </select>
                   )}
@@ -212,7 +220,7 @@ export default function AnalysisSetup({
                     ) : (
                       <select className="select" value={leftDisease} onChange={(event) => onLeftDiseaseChange(event.target.value)}>
                         {nonHealthyDiseases.filter((item) => item !== rightDisease).map((item) => (
-                          <option key={item} value={item}>{item}</option>
+                          <option key={item} value={item}>{diseaseLabel(item)}</option>
                         ))}
                       </select>
                     )}
@@ -226,7 +234,7 @@ export default function AnalysisSetup({
                     ) : (
                       <select className="select" value={rightDisease} onChange={(event) => onRightDiseaseChange(event.target.value)}>
                         {nonHealthyDiseases.filter((item) => item !== leftDisease).map((item) => (
-                          <option key={item} value={item}>{item}</option>
+                          <option key={item} value={item}>{diseaseLabel(item)}</option>
                         ))}
                       </select>
                     )}
