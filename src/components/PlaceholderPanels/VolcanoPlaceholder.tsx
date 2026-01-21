@@ -245,9 +245,19 @@ export default function VolcanoPlaceholder({
       };
     });
 
-    const maxY = Math.max(...allPoints.map((p) => p.neglog10), 10);
-    const minX = Math.min(...allPoints.map((p) => p.logfc), -2);
-    const maxX = Math.max(...allPoints.map((p) => p.logfc), 2);
+    // Calculate axis ranges dynamically with padding
+    const allLogFC = allPoints.map((p) => p.logfc);
+    const allNegLog10 = allPoints.map((p) => p.neglog10);
+
+    const minX = Math.min(...allLogFC, -2);
+    const maxX = Math.max(...allLogFC, 2);
+    const maxY = Math.max(...allNegLog10, 10);
+
+    // Add padding to ranges (10% on each side)
+    const xRange = maxX - minX;
+    const yRange = maxY - 0;
+    const xPadding = xRange * 0.1;
+    const yPadding = yRange * 0.1;
 
     // Thresholds for significance
     const logfcThreshold = 1;  // |logFC| > 1 is biologically significant
@@ -256,8 +266,15 @@ export default function VolcanoPlaceholder({
     const layout = {
       margin: { l: 50, r: 10, t: 10, b: 50 },
       height: 500,
-      xaxis: { title: "logFC", zeroline: false },
-      yaxis: { title: "-log10(padj)" },
+      xaxis: {
+        title: "logFC",
+        zeroline: false,
+        range: [minX - xPadding, maxX + xPadding]
+      },
+      yaxis: {
+        title: "-log10(padj)",
+        range: [0 - yPadding, maxY + yPadding]
+      },
       legend: {
         orientation: "v" as const,
         y: 0.5,
@@ -334,13 +351,14 @@ export default function VolcanoPlaceholder({
                 <thead>
                   <tr>
                     <th>Gene</th>
-                    <th>Cell type (logFC)</th>
+                    <th>logFC</th>
+                    <th>Cell type</th>
                     <th>Functional groups</th>
                   </tr>
                 </thead>
                 <tbody>
                   {topUp.length === 0 ? (
-                    <tr><td colSpan={3} className="muted">No data</td></tr>
+                    <tr><td colSpan={4} className="muted">No data</td></tr>
                   ) : (
                     topUp.map((row, idx) => (
                       <tr key={`up-${row.gene}-${idx}`}>
@@ -348,7 +366,14 @@ export default function VolcanoPlaceholder({
                         <td style={{ color: "#ef4444" }}>
                           {row.cellTypeLogFC.map((ct, ctIdx) => (
                             <div key={ctIdx}>
-                              {ct.cellType}: +{ct.logfc.toFixed(2)}
+                              +{ct.logfc.toFixed(2)}
+                            </div>
+                          ))}
+                        </td>
+                        <td>
+                          {row.cellTypeLogFC.map((ct, ctIdx) => (
+                            <div key={ctIdx}>
+                              {ct.cellType}
                             </div>
                           ))}
                         </td>
@@ -365,13 +390,14 @@ export default function VolcanoPlaceholder({
                 <thead>
                   <tr>
                     <th>Gene</th>
-                    <th>Cell type (logFC)</th>
+                    <th>logFC</th>
+                    <th>Cell type</th>
                     <th>Functional groups</th>
                   </tr>
                 </thead>
                 <tbody>
                   {topDown.length === 0 ? (
-                    <tr><td colSpan={3} className="muted">No data</td></tr>
+                    <tr><td colSpan={4} className="muted">No data</td></tr>
                   ) : (
                     topDown.map((row, idx) => (
                       <tr key={`down-${row.gene}-${idx}`}>
@@ -379,7 +405,14 @@ export default function VolcanoPlaceholder({
                         <td style={{ color: "#3b82f6" }}>
                           {row.cellTypeLogFC.map((ct, ctIdx) => (
                             <div key={ctIdx}>
-                              {ct.cellType}: {ct.logfc.toFixed(2)}
+                              {ct.logfc.toFixed(2)}
+                            </div>
+                          ))}
+                        </td>
+                        <td>
+                          {row.cellTypeLogFC.map((ct, ctIdx) => (
+                            <div key={ctIdx}>
+                              {ct.cellType}
                             </div>
                           ))}
                         </td>
