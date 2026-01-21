@@ -108,6 +108,9 @@ export default function Visualization({
                 leftDisease={leftDisease}
                 rightDisease={rightDisease}
                 genes={markerGenes}
+                markerPanels={markerPanels}
+                markerPanel={markerPanel}
+                onMarkerPanelChange={onMarkerPanelChange}
               />
             )
           ) : null}
