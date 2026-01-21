@@ -101,12 +101,11 @@ export default function CompositionPlaceholder({ selectedCellTypes }: Compositio
       return selectedSet.has(cellType);
     });
 
-    // Calculate totals per disease
+    // Calculate totals per disease (ALWAYS use total of ALL cell types, not just selected)
     const diseaseTotals: Record<string, number> = {};
     mergedGroups.forEach((disease, diseaseIdx) => {
       let total = 0;
       response.cell_types.forEach((cellType, cellIdx) => {
-        if (filterCellTypes && !selectedSet.has(cellType)) return;
         total += mergedCounts[diseaseIdx][cellIdx];
       });
       diseaseTotals[disease] = total;
@@ -116,6 +115,7 @@ export default function CompositionPlaceholder({ selectedCellTypes }: Compositio
     const colorPalette = generateColorPalette(cellTypesToShow.length);
 
     // Build traces with percentages for each cell type (subpopulation)
+    // Percentage is ALWAYS relative to total of ALL cell types
     const builtTraces = cellTypesToShow.map((cellType, idx) => {
         const cellIdx = response.cell_types.indexOf(cellType);
         const yValues = mergedGroups.map((disease, diseaseIdx) => {

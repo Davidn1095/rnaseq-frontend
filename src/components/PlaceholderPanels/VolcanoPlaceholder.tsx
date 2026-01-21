@@ -107,6 +107,10 @@ export default function VolcanoPlaceholder({
 
   // Build points for all cell types and group genes in tables
   const { allPoints, topUp, topDown } = useMemo(() => {
+    // Thresholds for significance
+    const logfcThreshold = 1;  // |logFC| > 1 is biologically significant
+    const padjThreshold = 0.05;  // padj < 0.05 is statistically significant
+
     const points: PointData[] = [];
     const upGenesMap = new Map<string, { gene: string; logfc: number; cellTypes: string[]; groups: string[] }>();
     const downGenesMap = new Map<string, { gene: string; logfc: number; cellTypes: string[]; groups: string[] }>();
@@ -117,19 +121,33 @@ export default function VolcanoPlaceholder({
 
       res.rows.forEach((row) => {
         const padj = Math.max(row.p_val_adj ?? row.p_val ?? 1, 1e-300);
-        const point: PointData = {
-          gene: row.gene,
-          logfc: row.logfc,
-          neglog10: -Math.log10(padj),
-          cellType,
-          groups: Array.isArray(row.groups) ? row.groups : [],
-        };
-        points.push(point);
+
+        // Only include points that pass BOTH thresholds
+        const passesLogFC = Math.abs(row.logfc) > logfcThreshold;
+        const passesPadj = padj < padjThreshold;
+
+        if (passesLogFC && passesPadj) {
+          const point: PointData = {
+            gene: row.gene,
+            logfc: row.logfc,
+            neglog10: -Math.log10(padj),
+            cellType,
+            groups: Array.isArray(row.groups) ? row.groups : [],
+          };
+          points.push(point);
+        }
       });
 
       // Get top up/down for this cell type and group by gene
+      // Only include genes that pass BOTH thresholds
       if (res.top_up) {
-        res.top_up.slice(0, 5).forEach((row) => {
+        res.top_up.forEach((row) => {
+          const padj = Math.max(row.p_val_adj ?? row.p_val ?? 1, 1e-300);
+          const passesLogFC = Math.abs(row.logfc) > logfcThreshold;
+          const passesPadj = padj < padjThreshold;
+
+          if (!passesLogFC || !passesPadj) return;
+
           const existing = upGenesMap.get(row.gene);
           const groups = Array.isArray(row.groups) ? row.groups : [];
           if (existing) {
@@ -149,7 +167,13 @@ export default function VolcanoPlaceholder({
         });
       }
       if (res.top_down) {
-        res.top_down.slice(0, 5).forEach((row) => {
+        res.top_down.forEach((row) => {
+          const padj = Math.max(row.p_val_adj ?? row.p_val ?? 1, 1e-300);
+          const passesLogFC = Math.abs(row.logfc) > logfcThreshold;
+          const passesPadj = padj < padjThreshold;
+
+          if (!passesLogFC || !passesPadj) return;
+
           const existing = downGenesMap.get(row.gene);
           const groups = Array.isArray(row.groups) ? row.groups : [];
           if (existing) {
@@ -170,10 +194,18 @@ export default function VolcanoPlaceholder({
       }
     });
 
+    // Sort tables by absolute logFC (highest first) and limit to top 10
+    const sortedUp = Array.from(upGenesMap.values())
+      .sort((a, b) => Math.abs(b.logfc) - Math.abs(a.logfc))
+      .slice(0, 10);
+    const sortedDown = Array.from(downGenesMap.values())
+      .sort((a, b) => Math.abs(b.logfc) - Math.abs(a.logfc))
+      .slice(0, 10);
+
     return {
       allPoints: points,
-      topUp: Array.from(upGenesMap.values()),
-      topDown: Array.from(downGenesMap.values()),
+      topUp: sortedUp,
+      topDown: sortedDown,
     };
   }, [responses, selectedCellTypes]);
 
