@@ -156,15 +156,15 @@ export default function CompositionPlaceholder({ selectedCellTypes }: Compositio
     const layout = {
       barmode: "stack",
       bargap: 0.2,
-      margin: { l: 60, r: 20, t: 10, b: 100 },
-      height: 520,
+      margin: { l: 60, r: 20, t: 10, b: 160 },
+      height: 580,
       xaxis: { automargin: true, tickangle: -45 },
       yaxis: {
         automargin: true,
         title: "Percentage (%)",
         range: [0, 100],
       },
-      legend: { orientation: "h" as const, y: -0.3 },
+      legend: { orientation: "h" as const, y: -0.5, yanchor: "top" as const },
     };
     window.Plotly.react(plotRef.current, traces, layout, { displayModeBar: false, responsive: true }).then(() => {
       // Apply rounded corners to bar chart paths
