@@ -30,6 +30,7 @@ type PointData = {
   logfc: number;
   neglog10: number;
   cellType: string;
+  disease: string;
   groups?: string[];
 };
 
@@ -70,25 +71,31 @@ export default function VolcanoPlaceholder({
     }
   }, [disease, diseases]);
 
-  // Fetch data for all selected cell types
+  // Fetch data for all selected cell types across all diseases
   useEffect(() => {
     if (mode !== "single") return;
-    if (!selectedDisease || selectedCellTypes.length === 0) return;
+    if (selectedCellTypes.length === 0) return;
 
     setLoading(true);
     setError(null);
 
+    // Fetch for all non-Healthy diseases
+    const diseasesToFetch = diseases.filter(d => d !== "Healthy");
+
     Promise.all(
-      selectedCellTypes.map((cellType) =>
-        fetchDeByDisease(apiBase, selectedDisease, cellType, 500, 0, 6)
-          .then((res) => ({ cellType, res }))
+      diseasesToFetch.flatMap((disease) =>
+        selectedCellTypes.map((cellType) =>
+          fetchDeByDisease(apiBase, disease, cellType, 500, 0, 6)
+            .then((res) => ({ disease, cellType, res }))
+        )
       )
     )
       .then((results) => {
         const newResponses: Record<string, DeResponse> = {};
-        results.forEach(({ cellType, res }) => {
+        results.forEach(({ disease, cellType, res }) => {
           if (res.ok) {
-            newResponses[cellType] = res;
+            // Key by both disease and cellType
+            newResponses[`${disease}::${cellType}`] = res;
           }
         });
         setResponses(newResponses);
@@ -103,21 +110,25 @@ export default function VolcanoPlaceholder({
       .finally(() => {
         setLoading(false);
       });
-  }, [mode, selectedDisease, selectedCellTypes, apiBase]);
+  }, [mode, diseases, selectedCellTypes, apiBase]);
 
-  // Build points for all cell types and group genes in tables
+  // Build points for all cell types across all diseases and group genes in tables
   const { allPoints, topUp, topDown } = useMemo(() => {
     // Thresholds for significance
     const logfcThreshold = 1;  // |logFC| > 1 is biologically significant
     const padjThreshold = 0.05;  // padj < 0.05 is statistically significant
 
     const points: PointData[] = [];
-    const upGenesMap = new Map<string, { gene: string; logfc: number; cellTypes: string[]; groups: string[] }>();
-    const downGenesMap = new Map<string, { gene: string; logfc: number; cellTypes: string[]; groups: string[] }>();
+    const upGenesMap = new Map<string, { gene: string; logfc: number; cellTypes: string[]; diseases: string[]; groups: string[] }>();
+    const downGenesMap = new Map<string, { gene: string; logfc: number; cellTypes: string[]; diseases: string[]; groups: string[] }>();
 
-    selectedCellTypes.forEach((cellType) => {
-      const res = responses[cellType];
+    // Process all disease-cellType combinations
+    Object.entries(responses).forEach(([key, res]) => {
       if (!res?.ok || !res.rows) return;
+
+      // Extract disease and cellType from key (format: "disease::cellType")
+      const [disease, cellType] = key.split("::");
+      if (!disease || !cellType) return;
 
       res.rows.forEach((row) => {
         const padj = Math.max(row.p_val_adj ?? row.p_val ?? 1, 1e-300);
@@ -132,13 +143,14 @@ export default function VolcanoPlaceholder({
             logfc: row.logfc,
             neglog10: -Math.log10(padj),
             cellType,
+            disease,
             groups: Array.isArray(row.groups) ? row.groups : [],
           };
           points.push(point);
         }
       });
 
-      // Get top up/down for this cell type and group by gene
+      // Get top up/down for this disease-cellType combination and group by gene
       // Only include genes that pass BOTH thresholds
       if (res.top_up) {
         res.top_up.forEach((row) => {
@@ -151,7 +163,12 @@ export default function VolcanoPlaceholder({
           const existing = upGenesMap.get(row.gene);
           const groups = Array.isArray(row.groups) ? row.groups : [];
           if (existing) {
-            existing.cellTypes.push(cellType);
+            if (!existing.cellTypes.includes(cellType)) {
+              existing.cellTypes.push(cellType);
+            }
+            if (!existing.diseases.includes(disease)) {
+              existing.diseases.push(disease);
+            }
             // Merge groups, avoiding duplicates
             groups.forEach(g => {
               if (!existing.groups.includes(g)) existing.groups.push(g);
@@ -161,6 +178,7 @@ export default function VolcanoPlaceholder({
               gene: row.gene,
               logfc: row.logfc,
               cellTypes: [cellType],
+              diseases: [disease],
               groups: [...groups],
             });
           }
@@ -177,7 +195,12 @@ export default function VolcanoPlaceholder({
           const existing = downGenesMap.get(row.gene);
           const groups = Array.isArray(row.groups) ? row.groups : [];
           if (existing) {
-            existing.cellTypes.push(cellType);
+            if (!existing.cellTypes.includes(cellType)) {
+              existing.cellTypes.push(cellType);
+            }
+            if (!existing.diseases.includes(disease)) {
+              existing.diseases.push(disease);
+            }
             // Merge groups, avoiding duplicates
             groups.forEach(g => {
               if (!existing.groups.includes(g)) existing.groups.push(g);
@@ -187,6 +210,7 @@ export default function VolcanoPlaceholder({
               gene: row.gene,
               logfc: row.logfc,
               cellTypes: [cellType],
+              diseases: [disease],
               groups: [...groups],
             });
           }
@@ -207,7 +231,7 @@ export default function VolcanoPlaceholder({
       topUp: sortedUp,
       topDown: sortedDown,
     };
-  }, [responses, selectedCellTypes]);
+  }, [responses]);
 
   // Build traces for each cell type
   useEffect(() => {
@@ -228,7 +252,7 @@ export default function VolcanoPlaceholder({
         y: cellPoints.map((p) => p.neglog10),
         text: cellPoints.map((p) => p.gene),
         hovertext: cellPoints.map((p) =>
-          `<b>${p.gene}</b><br>Cell type: ${p.cellType}<br>logFC: ${p.logfc.toFixed(3)}<br>-log10(padj): ${p.neglog10.toFixed(2)}${p.groups?.length ? `<br>Groups: ${p.groups.join(", ")}` : ""}`
+          `<b>${p.gene}</b><br>Disease: ${mapDiseaseLabel(p.disease)}<br>Cell type: ${p.cellType}<br>logFC: ${p.logfc.toFixed(3)}<br>-log10(padj): ${p.neglog10.toFixed(2)}${p.groups?.length ? `<br>Groups: ${p.groups.join(", ")}` : ""}`
         ),
         hoverinfo: "text",
         marker: {
@@ -291,26 +315,9 @@ export default function VolcanoPlaceholder({
         <div>
           <div className="h3">Volcano</div>
           <div className="muted small">
-            Differential expression: {mapDiseaseLabel(selectedDisease)} vs Healthy
+            Differential expression: All diseases vs Healthy (|logFC| &gt; 1, padj &lt; 0.05)
           </div>
         </div>
-      </div>
-
-      <div className="panel-controls">
-        <label className="control">
-          <span>Disease</span>
-          <select
-            value={selectedDisease}
-            onChange={(event) => setSelectedDisease(event.target.value)}
-            disabled={mode !== "single"}
-          >
-            {diseases.map((item) => (
-              <option key={item} value={item}>
-                {mapDiseaseLabel(item)}
-              </option>
-            ))}
-          </select>
-        </label>
       </div>
 
       {loading ? <div className="muted small" style={{ marginTop: 12 }}>Loading...</div> : null}
@@ -329,18 +336,20 @@ export default function VolcanoPlaceholder({
                   <tr>
                     <th>Gene</th>
                     <th>logFC</th>
+                    <th>Disease</th>
                     <th>Cell type</th>
                     <th>Functional groups</th>
                   </tr>
                 </thead>
                 <tbody>
                   {topUp.length === 0 ? (
-                    <tr><td colSpan={4} className="muted">No data</td></tr>
+                    <tr><td colSpan={5} className="muted">No data</td></tr>
                   ) : (
                     topUp.map((row, idx) => (
                       <tr key={`up-${row.gene}-${idx}`}>
                         <td><strong>{row.gene}</strong></td>
                         <td style={{ color: "#ef4444" }}>+{row.logfc.toFixed(2)}</td>
+                        <td>{row.diseases.map(d => mapDiseaseLabel(d)).join(", ")}</td>
                         <td>{row.cellTypes.join(", ")}</td>
                         <td className="muted small">{row.groups?.length ? row.groups.join(", ") : "—"}</td>
                       </tr>
@@ -356,18 +365,20 @@ export default function VolcanoPlaceholder({
                   <tr>
                     <th>Gene</th>
                     <th>logFC</th>
+                    <th>Disease</th>
                     <th>Cell type</th>
                     <th>Functional groups</th>
                   </tr>
                 </thead>
                 <tbody>
                   {topDown.length === 0 ? (
-                    <tr><td colSpan={4} className="muted">No data</td></tr>
+                    <tr><td colSpan={5} className="muted">No data</td></tr>
                   ) : (
                     topDown.map((row, idx) => (
                       <tr key={`down-${row.gene}-${idx}`}>
                         <td><strong>{row.gene}</strong></td>
                         <td style={{ color: "#3b82f6" }}>{row.logfc.toFixed(2)}</td>
+                        <td>{row.diseases.map(d => mapDiseaseLabel(d)).join(", ")}</td>
                         <td>{row.cellTypes.join(", ")}</td>
                         <td className="muted small">{row.groups?.length ? row.groups.join(", ") : "—"}</td>
                       </tr>
