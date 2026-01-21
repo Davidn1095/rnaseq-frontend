@@ -3,11 +3,69 @@ import type { DeResponse, Manifest, Mode } from "../../lib/types";
 import { DEFAULT_RESOLVED_BASE, fetchDeByDisease } from "../../lib/api";
 import { getStoredApiBase } from "../../lib/storage";
 
-// Colors for different cell types
-const CELL_TYPE_COLORS = [
-  "#2563eb", "#dc2626", "#16a34a", "#ea580c", "#9333ea",
-  "#0891b2", "#db2777", "#ca8a04", "#6366f1", "#64748b",
-];
+// Colors for different cell populations
+const POPULATION_COLORS: Record<string, string> = {
+  "T cells": "#2563eb",
+  "B cells": "#16a34a",
+  "NK cells": "#dc2626",
+  "Monocytes": "#ea580c",
+  "Myeloid/DC": "#9333ea",
+  "Neutrophils": "#0891b2",
+  "Basophils": "#db2777",
+  "Plasma": "#ca8a04",
+  "Progenitors": "#6366f1",
+  "Other": "#64748b",
+};
+
+// Classify cell type into population
+function classifyPopulation(label: string): string {
+  const name = label.toLowerCase();
+  if (
+    name.includes("t cells") ||
+    name.includes("t cell") ||
+    name.includes("cd4") ||
+    name.includes("cd8") ||
+    name.includes("tcr") ||
+    name.includes("gd t") ||
+    name.includes("gamma delta") ||
+    name.includes("th1") ||
+    name.includes("th2") ||
+    name.includes("th17") ||
+    name.includes("treg") ||
+    name.includes("t regulatory") ||
+    name.includes("regulatory t") ||
+    name.includes("t helper") ||
+    name.includes("helper t") ||
+    name.includes("mait")
+  ) {
+    return "T cells";
+  }
+  if (name.includes("b cells") || name.includes("b cell")) {
+    return "B cells";
+  }
+  if (name.includes("nk") || name.includes("natural killer")) {
+    return "NK cells";
+  }
+  if (name.includes("monocyte")) {
+    return "Monocytes";
+  }
+  if (name.includes("dendritic") || name.includes("dc") || name.includes("myeloid")) {
+    return "Myeloid/DC";
+  }
+  if (name.includes("neutrophil")) {
+    return "Neutrophils";
+  }
+  if (name.includes("basophil")) {
+    return "Basophils";
+  }
+  if (name.includes("plasma") || name.includes("plasmablast")) {
+    return "Plasma";
+  }
+  if (name.includes("progenitor") || name.includes("stem")) {
+    return "Progenitors";
+  }
+  return "Other";
+}
 
 type VolcanoPlaceholderProps = {
   manifest: Manifest | null;
@@ -174,9 +232,10 @@ export default function VolcanoPlaceholder({
   useEffect(() => {
     if (!plotRef.current || !window.Plotly || allPoints.length === 0) return;
 
-    const traces = selectedCellTypes.map((cellType, idx) => {
+    const traces = selectedCellTypes.map((cellType) => {
       const cellPoints = allPoints.filter((p) => p.cellType === cellType);
-      const color = CELL_TYPE_COLORS[idx % CELL_TYPE_COLORS.length];
+      const population = classifyPopulation(cellType);
+      const color = POPULATION_COLORS[population] || POPULATION_COLORS["Other"];
 
       return {
         type: "scatter",

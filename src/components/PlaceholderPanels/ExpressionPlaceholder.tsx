@@ -55,10 +55,11 @@ export default function ExpressionPlaceholder({
   const mapPanelLabel = (value: string) => {
     const normalized = value.trim().toLowerCase();
     if (normalized === "default") return "Default";
-    if (normalized === "ra") return "Rheumatoid arthritis";
-    if (normalized === "sjs") return "Sjögren syndrome";
-    if (normalized === "sle") return "Systemic lupus erythematosus";
-    return value;
+    if (normalized === "ra" || normalized === "rheumatoid arthritis") return "Rheumatoid arthritis";
+    if (normalized === "sjs" || normalized === "sjogren" || normalized === "sjögren syndrome") return "Sjögren syndrome";
+    if (normalized === "sle" || normalized === "systemic lupus erythematosus") return "Systemic lupus erythematosus";
+    // Return value as-is but capitalize first letter
+    return value.charAt(0).toUpperCase() + value.slice(1);
   };
 
   const [signatureData, setSignatureData] = useState<{

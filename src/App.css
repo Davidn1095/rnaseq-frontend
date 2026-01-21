@@ -25,8 +25,8 @@ body {
 .page {
   width: 100%;
   margin: 0 auto;
-  padding: 16px;
-  max-width: 1600px;
+  padding: 12px;
+  max-width: 1800px;
 }
 
 .header {
@@ -61,10 +61,10 @@ body {
 
 .grid {
   display: grid;
-  grid-template-columns: minmax(640px, 760px) minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: minmax(600px, 680px) minmax(0, 1fr);
+  gap: 12px;
   align-items: start;
-  margin-top: 16px;
+  margin-top: 12px;
 }
 
 .col {
@@ -482,6 +482,12 @@ body {
 .plot-frame.large {
   height: 520px;
   min-height: 520px;
+}
+
+/* Rounded corners for Plotly bar charts */
+.plot-frame .bars path {
+  rx: 4;
+  ry: 4;
 }
 
 .panel-header {

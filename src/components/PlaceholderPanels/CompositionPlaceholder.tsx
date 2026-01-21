@@ -196,6 +196,9 @@ export default function CompositionPlaceholder({ selectedCellTypes }: Compositio
           textposition: "none",
           marker: {
             color: cellTypeColors[cellType],
+            line: {
+              width: 0,
+            },
           },
         };
       });
@@ -207,6 +210,7 @@ export default function CompositionPlaceholder({ selectedCellTypes }: Compositio
     if (!plotRef.current || !window.Plotly || traces.length === 0) return;
     const layout = {
       barmode: "stack",
+      bargap: 0.2,
       margin: { l: 60, r: 20, t: 10, b: 100 },
       height: 520,
       xaxis: { automargin: true, tickangle: -45 },
