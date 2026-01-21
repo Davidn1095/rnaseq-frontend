@@ -484,11 +484,6 @@ body {
   min-height: 520px;
 }
 
-/* Rounded corners for Plotly bar charts */
-.plot-frame .bars path {
-  rx: 4;
-  ry: 4;
-}
 
 .panel-header {
   display: flex;

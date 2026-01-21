@@ -3,68 +3,17 @@ import type { DeResponse, Manifest, Mode } from "../../lib/types";
 import { DEFAULT_RESOLVED_BASE, fetchDeByDisease } from "../../lib/api";
 import { getStoredApiBase } from "../../lib/storage";
 
-// Colors for different cell populations
-const POPULATION_COLORS: Record<string, string> = {
-  "T cells": "#2563eb",
-  "B cells": "#16a34a",
-  "NK cells": "#dc2626",
-  "Monocytes": "#ea580c",
-  "Myeloid/DC": "#9333ea",
-  "Neutrophils": "#0891b2",
-  "Basophils": "#db2777",
-  "Plasma": "#ca8a04",
-  "Progenitors": "#6366f1",
-  "Other": "#64748b",
-};
-
-// Classify cell type into population
-function classifyPopulation(label: string): string {
-  const name = label.toLowerCase();
-  if (
-    name.includes("t cells") ||
-    name.includes("t cell") ||
-    name.includes("cd4") ||
-    name.includes("cd8") ||
-    name.includes("tcr") ||
-    name.includes("gd t") ||
-    name.includes("gamma delta") ||
-    name.includes("th1") ||
-    name.includes("th2") ||
-    name.includes("th17") ||
-    name.includes("treg") ||
-    name.includes("t regulatory") ||
-    name.includes("regulatory t") ||
-    name.includes("t helper") ||
-    name.includes("helper t") ||
-    name.includes("mait")
-  ) {
-    return "T cells";
+// Generate color palette with distinct colors
+function generateColorPalette(count: number): string[] {
+  const hueStep = 360 / count;
+  const colors: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const hue = (i * hueStep) % 360;
+    const saturation = 60 + (i % 3) * 15;
+    const lightness = 45 + (i % 2) * 10;
+    colors.push(`hsl(${hue}, ${saturation}%, ${lightness}%)`);
   }
-  if (name.includes("b cells") || name.includes("b cell")) {
-    return "B cells";
-  }
-  if (name.includes("nk") || name.includes("natural killer")) {
-    return "NK cells";
-  }
-  if (name.includes("monocyte")) {
-    return "Monocytes";
-  }
-  if (name.includes("dendritic") || name.includes("dc") || name.includes("myeloid")) {
-    return "Myeloid/DC";
-  }
-  if (name.includes("neutrophil")) {
-    return "Neutrophils";
-  }
-  if (name.includes("basophil")) {
-    return "Basophils";
-  }
-  if (name.includes("plasma") || name.includes("plasmablast")) {
-    return "Plasma";
-  }
-  if (name.includes("progenitor") || name.includes("stem")) {
-    return "Progenitors";
-  }
-  return "Other";
+  return colors;
 }
 
 type VolcanoPlaceholderProps = {
@@ -232,10 +181,12 @@ export default function VolcanoPlaceholder({
   useEffect(() => {
     if (!plotRef.current || !window.Plotly || allPoints.length === 0) return;
 
-    const traces = selectedCellTypes.map((cellType) => {
+    // Generate unique color for each subpopulation
+    const colorPalette = generateColorPalette(selectedCellTypes.length);
+
+    const traces = selectedCellTypes.map((cellType, idx) => {
       const cellPoints = allPoints.filter((p) => p.cellType === cellType);
-      const population = classifyPopulation(cellType);
-      const color = POPULATION_COLORS[population] || POPULATION_COLORS["Other"];
+      const color = colorPalette[idx];
 
       return {
         type: "scatter",
@@ -257,11 +208,17 @@ export default function VolcanoPlaceholder({
     });
 
     const maxY = Math.max(...allPoints.map((p) => p.neglog10), 10);
+    const minX = Math.min(...allPoints.map((p) => p.logfc), -2);
+    const maxX = Math.max(...allPoints.map((p) => p.logfc), 2);
+
+    // Thresholds for significance
+    const logfcThreshold = 1;  // |logFC| > 1 is biologically significant
+    const padjThreshold = -Math.log10(0.05);  // padj < 0.05 is statistically significant
 
     const layout = {
       margin: { l: 50, r: 10, t: 10, b: 50 },
       height: 500,
-      xaxis: { title: "logFC", zeroline: true, zerolinecolor: "#e2e8f0" },
+      xaxis: { title: "logFC", zeroline: false },
       yaxis: { title: "-log10(padj)" },
       legend: {
         orientation: "v" as const,
@@ -271,7 +228,12 @@ export default function VolcanoPlaceholder({
         xanchor: "left" as const,
       },
       shapes: [
-        { type: "line", x0: 0, x1: 0, y0: 0, y1: maxY, line: { color: "#cbd5e1", width: 1, dash: "dot" } },
+        // Vertical line at logFC = 1 (upregulation threshold)
+        { type: "line", x0: logfcThreshold, x1: logfcThreshold, y0: 0, y1: maxY, line: { color: "#94a3b8", width: 1, dash: "dash" } },
+        // Vertical line at logFC = -1 (downregulation threshold)
+        { type: "line", x0: -logfcThreshold, x1: -logfcThreshold, y0: 0, y1: maxY, line: { color: "#94a3b8", width: 1, dash: "dash" } },
+        // Horizontal line at padj threshold
+        { type: "line", x0: minX, x1: maxX, y0: padjThreshold, y1: padjThreshold, line: { color: "#94a3b8", width: 1, dash: "dash" } },
       ],
     };
 
