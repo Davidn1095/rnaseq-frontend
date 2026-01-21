@@ -263,8 +263,12 @@ export default function VolcanoPlaceholder({
     const logfcThreshold = 1;  // |logFC| > 1 is biologically significant
     const padjThreshold = -Math.log10(0.05);  // padj < 0.05 is statistically significant
 
+    // Count upregulated and downregulated genes
+    const upregulatedCount = allPoints.filter((p) => p.logfc > logfcThreshold).length;
+    const downregulatedCount = allPoints.filter((p) => p.logfc < -logfcThreshold).length;
+
     const layout = {
-      margin: { l: 50, r: 10, t: 10, b: 50 },
+      margin: { l: 50, r: 10, t: 40, b: 50 },
       height: 500,
       xaxis: {
         title: "logFC",
@@ -289,6 +293,38 @@ export default function VolcanoPlaceholder({
         { type: "line", x0: -logfcThreshold, x1: -logfcThreshold, y0: 0, y1: maxY, line: { color: "#94a3b8", width: 1, dash: "dash" } },
         // Horizontal line at padj threshold
         { type: "line", x0: minX, x1: maxX, y0: padjThreshold, y1: padjThreshold, line: { color: "#94a3b8", width: 1, dash: "dash" } },
+      ],
+      annotations: [
+        // Upregulated count (top right)
+        {
+          x: maxX + xPadding,
+          y: maxY + yPadding,
+          xref: "x",
+          yref: "y",
+          text: `Upregulated: ${upregulatedCount}`,
+          showarrow: false,
+          xanchor: "right",
+          yanchor: "top",
+          font: {
+            size: 12,
+            color: "#ef4444",
+          },
+        },
+        // Downregulated count (top left)
+        {
+          x: minX - xPadding,
+          y: maxY + yPadding,
+          xref: "x",
+          yref: "y",
+          text: `Downregulated: ${downregulatedCount}`,
+          showarrow: false,
+          xanchor: "left",
+          yanchor: "top",
+          font: {
+            size: 12,
+            color: "#3b82f6",
+          },
+        },
       ],
     };
 
