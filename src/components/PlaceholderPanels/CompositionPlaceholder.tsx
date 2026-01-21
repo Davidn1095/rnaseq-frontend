@@ -145,66 +145,57 @@ export default function CompositionPlaceholder({ selectedCellTypes }: Compositio
       });
     });
 
-    // Aggregate by population (only including selected cell types if filter is active)
-    const populations = Object.keys(POPULATION_COLORS);
-    const populationCounts: Record<string, Record<string, number>> = {};
-
-    populations.forEach((pop) => {
-      populationCounts[pop] = {};
-      mergedGroups.forEach((disease) => {
-        populationCounts[pop][disease] = 0;
-      });
-    });
-
-    response.cell_types.forEach((cellType, cellIdx) => {
-      // Skip cell types not in selection (if filtering)
-      if (filterCellTypes && !selectedSet.has(cellType)) return;
-
-      const population = classifyPopulation(cellType);
-      mergedGroups.forEach((disease, diseaseIdx) => {
-        populationCounts[population][disease] += mergedCounts[diseaseIdx][cellIdx];
-      });
+    // Use subpopulations (actual cell types) instead of aggregated populations
+    // Filter cell types based on selection
+    const cellTypesToShow = response.cell_types.filter((cellType) => {
+      if (!filterCellTypes) return true;
+      return selectedSet.has(cellType);
     });
 
     // Calculate totals per disease
     const diseaseTotals: Record<string, number> = {};
-    mergedGroups.forEach((disease) => {
-      diseaseTotals[disease] = populations.reduce(
-        (sum, pop) => sum + populationCounts[pop][disease],
-        0
-      );
+    mergedGroups.forEach((disease, diseaseIdx) => {
+      let total = 0;
+      response.cell_types.forEach((cellType, cellIdx) => {
+        if (filterCellTypes && !selectedSet.has(cellType)) return;
+        total += mergedCounts[diseaseIdx][cellIdx];
+      });
+      diseaseTotals[disease] = total;
     });
 
-    // Build traces with percentages
-    const builtTraces = populations
-      .filter((pop) => {
-        // Only include populations that have any cells
-        return mergedGroups.some((disease) => populationCounts[pop][disease] > 0);
-      })
-      .map((population) => {
-        const yValues = mergedGroups.map((disease) => {
-          const count = populationCounts[population][disease];
+    // Assign colors based on population classification
+    const cellTypeColors: Record<string, string> = {};
+    response.cell_types.forEach((cellType) => {
+      const population = classifyPopulation(cellType);
+      cellTypeColors[cellType] = POPULATION_COLORS[population] || POPULATION_COLORS["Other"];
+    });
+
+    // Build traces with percentages for each cell type (subpopulation)
+    const builtTraces = cellTypesToShow.map((cellType) => {
+        const cellIdx = response.cell_types.indexOf(cellType);
+        const yValues = mergedGroups.map((disease, diseaseIdx) => {
+          const count = mergedCounts[diseaseIdx][cellIdx];
           const total = diseaseTotals[disease] || 1;
           return (count / total) * 100;
         });
 
-        const hoverText = mergedGroups.map((disease) => {
-          const count = populationCounts[population][disease];
+        const hoverText = mergedGroups.map((disease, diseaseIdx) => {
+          const count = mergedCounts[diseaseIdx][cellIdx];
           const total = diseaseTotals[disease] || 1;
           const pct = ((count / total) * 100).toFixed(1);
-          return `<b>${population}</b><br>${disease}<br>Count: ${count.toLocaleString()}<br>Percentage: ${pct}%`;
+          return `<b>${cellType}</b><br>${disease}<br>Count: ${count.toLocaleString()}<br>Percentage: ${pct}%`;
         });
 
         return {
           type: "bar",
-          name: population,
+          name: cellType,
           x: mergedGroups,
           y: yValues,
           hovertext: hoverText,
           hoverinfo: "text",
           textposition: "none",
           marker: {
-            color: POPULATION_COLORS[population],
+            color: cellTypeColors[cellType],
           },
         };
       });

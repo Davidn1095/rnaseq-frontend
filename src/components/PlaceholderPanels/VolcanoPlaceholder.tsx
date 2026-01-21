@@ -98,11 +98,11 @@ export default function VolcanoPlaceholder({
       });
   }, [mode, selectedDisease, selectedCellTypes, apiBase]);
 
-  // Build points for all cell types
+  // Build points for all cell types and group genes in tables
   const { allPoints, topUp, topDown } = useMemo(() => {
     const points: PointData[] = [];
-    const upGenes: PointData[] = [];
-    const downGenes: PointData[] = [];
+    const upGenesMap = new Map<string, { gene: string; logfc: number; cellTypes: string[]; groups: string[] }>();
+    const downGenesMap = new Map<string, { gene: string; logfc: number; cellTypes: string[]; groups: string[] }>();
 
     selectedCellTypes.forEach((cellType) => {
       const res = responses[cellType];
@@ -120,32 +120,54 @@ export default function VolcanoPlaceholder({
         points.push(point);
       });
 
-      // Get top up/down for this cell type
+      // Get top up/down for this cell type and group by gene
       if (res.top_up) {
         res.top_up.slice(0, 5).forEach((row) => {
-          upGenes.push({
-            gene: row.gene,
-            logfc: row.logfc,
-            neglog10: 0,
-            cellType,
-            groups: Array.isArray(row.groups) ? row.groups : [],
-          });
+          const existing = upGenesMap.get(row.gene);
+          const groups = Array.isArray(row.groups) ? row.groups : [];
+          if (existing) {
+            existing.cellTypes.push(cellType);
+            // Merge groups, avoiding duplicates
+            groups.forEach(g => {
+              if (!existing.groups.includes(g)) existing.groups.push(g);
+            });
+          } else {
+            upGenesMap.set(row.gene, {
+              gene: row.gene,
+              logfc: row.logfc,
+              cellTypes: [cellType],
+              groups: [...groups],
+            });
+          }
         });
       }
       if (res.top_down) {
         res.top_down.slice(0, 5).forEach((row) => {
-          downGenes.push({
-            gene: row.gene,
-            logfc: row.logfc,
-            neglog10: 0,
-            cellType,
-            groups: Array.isArray(row.groups) ? row.groups : [],
-          });
+          const existing = downGenesMap.get(row.gene);
+          const groups = Array.isArray(row.groups) ? row.groups : [];
+          if (existing) {
+            existing.cellTypes.push(cellType);
+            // Merge groups, avoiding duplicates
+            groups.forEach(g => {
+              if (!existing.groups.includes(g)) existing.groups.push(g);
+            });
+          } else {
+            downGenesMap.set(row.gene, {
+              gene: row.gene,
+              logfc: row.logfc,
+              cellTypes: [cellType],
+              groups: [...groups],
+            });
+          }
         });
       }
     });
 
-    return { allPoints: points, topUp: upGenes, topDown: downGenes };
+    return {
+      allPoints: points,
+      topUp: Array.from(upGenesMap.values()),
+      topDown: Array.from(downGenesMap.values()),
+    };
   }, [responses, selectedCellTypes]);
 
   // Build traces for each cell type
@@ -178,11 +200,17 @@ export default function VolcanoPlaceholder({
     const maxY = Math.max(...allPoints.map((p) => p.neglog10), 10);
 
     const layout = {
-      margin: { l: 60, r: 20, t: 30, b: 60 },
-      height: 450,
+      margin: { l: 50, r: 10, t: 10, b: 50 },
+      height: 500,
       xaxis: { title: "logFC", zeroline: true, zerolinecolor: "#e2e8f0" },
       yaxis: { title: "-log10(padj)" },
-      legend: { orientation: "h" as const, y: 1.1, x: 0.5, xanchor: "center" as const },
+      legend: {
+        orientation: "v" as const,
+        y: 0.5,
+        yanchor: "middle" as const,
+        x: 1.02,
+        xanchor: "left" as const,
+      },
       shapes: [
         { type: "line", x0: 0, x1: 0, y0: 0, y1: maxY, line: { color: "#cbd5e1", width: 1, dash: "dot" } },
       ],
@@ -237,7 +265,7 @@ export default function VolcanoPlaceholder({
 
       {allPoints.length > 0 ? (
         <>
-          <div className="plot-frame" ref={plotRef} style={{ height: 450 }} />
+          <div className="plot-frame" ref={plotRef} style={{ height: 500 }} />
 
           {/* Tables for top up/down regulated genes */}
           <div className="panel-grid" style={{ marginTop: 16 }}>
@@ -257,10 +285,10 @@ export default function VolcanoPlaceholder({
                     <tr><td colSpan={4} className="muted">No data</td></tr>
                   ) : (
                     topUp.map((row, idx) => (
-                      <tr key={`up-${row.gene}-${row.cellType}-${idx}`}>
+                      <tr key={`up-${row.gene}-${idx}`}>
                         <td><strong>{row.gene}</strong></td>
                         <td style={{ color: "#ef4444" }}>+{row.logfc.toFixed(2)}</td>
-                        <td>{row.cellType}</td>
+                        <td>{row.cellTypes.join(", ")}</td>
                         <td className="muted small">{row.groups?.length ? row.groups.join(", ") : "—"}</td>
                       </tr>
                     ))
@@ -284,10 +312,10 @@ export default function VolcanoPlaceholder({
                     <tr><td colSpan={4} className="muted">No data</td></tr>
                   ) : (
                     topDown.map((row, idx) => (
-                      <tr key={`down-${row.gene}-${row.cellType}-${idx}`}>
+                      <tr key={`down-${row.gene}-${idx}`}>
                         <td><strong>{row.gene}</strong></td>
                         <td style={{ color: "#3b82f6" }}>{row.logfc.toFixed(2)}</td>
-                        <td>{row.cellType}</td>
+                        <td>{row.cellTypes.join(", ")}</td>
                         <td className="muted small">{row.groups?.length ? row.groups.join(", ") : "—"}</td>
                       </tr>
                     ))
