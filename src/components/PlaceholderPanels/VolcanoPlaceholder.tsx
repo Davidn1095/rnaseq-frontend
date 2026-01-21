@@ -112,8 +112,8 @@ export default function VolcanoPlaceholder({
     const padjThreshold = 0.05;  // padj < 0.05 is statistically significant
 
     const points: PointData[] = [];
-    const upGenesMap = new Map<string, { gene: string; logfc: number; cellTypes: string[]; groups: string[] }>();
-    const downGenesMap = new Map<string, { gene: string; logfc: number; cellTypes: string[]; groups: string[] }>();
+    const upGenesMap = new Map<string, { gene: string; cellTypeLogFC: Array<{ cellType: string; logfc: number }>; groups: string[] }>();
+    const downGenesMap = new Map<string, { gene: string; cellTypeLogFC: Array<{ cellType: string; logfc: number }>; groups: string[] }>();
 
     selectedCellTypes.forEach((cellType) => {
       const res = responses[cellType];
@@ -151,7 +151,7 @@ export default function VolcanoPlaceholder({
           const existing = upGenesMap.get(row.gene);
           const groups = Array.isArray(row.groups) ? row.groups : [];
           if (existing) {
-            existing.cellTypes.push(cellType);
+            existing.cellTypeLogFC.push({ cellType, logfc: row.logfc });
             // Merge groups, avoiding duplicates
             groups.forEach(g => {
               if (!existing.groups.includes(g)) existing.groups.push(g);
@@ -159,8 +159,7 @@ export default function VolcanoPlaceholder({
           } else {
             upGenesMap.set(row.gene, {
               gene: row.gene,
-              logfc: row.logfc,
-              cellTypes: [cellType],
+              cellTypeLogFC: [{ cellType, logfc: row.logfc }],
               groups: [...groups],
             });
           }
@@ -177,7 +176,7 @@ export default function VolcanoPlaceholder({
           const existing = downGenesMap.get(row.gene);
           const groups = Array.isArray(row.groups) ? row.groups : [];
           if (existing) {
-            existing.cellTypes.push(cellType);
+            existing.cellTypeLogFC.push({ cellType, logfc: row.logfc });
             // Merge groups, avoiding duplicates
             groups.forEach(g => {
               if (!existing.groups.includes(g)) existing.groups.push(g);
@@ -185,8 +184,7 @@ export default function VolcanoPlaceholder({
           } else {
             downGenesMap.set(row.gene, {
               gene: row.gene,
-              logfc: row.logfc,
-              cellTypes: [cellType],
+              cellTypeLogFC: [{ cellType, logfc: row.logfc }],
               groups: [...groups],
             });
           }
@@ -194,12 +192,20 @@ export default function VolcanoPlaceholder({
       }
     });
 
-    // Sort tables by absolute logFC (highest first) and limit to top 10
+    // Sort tables by max absolute logFC across cell types (highest first) and limit to top 10
     const sortedUp = Array.from(upGenesMap.values())
-      .sort((a, b) => Math.abs(b.logfc) - Math.abs(a.logfc))
+      .sort((a, b) => {
+        const maxA = Math.max(...a.cellTypeLogFC.map(ct => Math.abs(ct.logfc)));
+        const maxB = Math.max(...b.cellTypeLogFC.map(ct => Math.abs(ct.logfc)));
+        return maxB - maxA;
+      })
       .slice(0, 10);
     const sortedDown = Array.from(downGenesMap.values())
-      .sort((a, b) => Math.abs(b.logfc) - Math.abs(a.logfc))
+      .sort((a, b) => {
+        const maxA = Math.max(...a.cellTypeLogFC.map(ct => Math.abs(ct.logfc)));
+        const maxB = Math.max(...b.cellTypeLogFC.map(ct => Math.abs(ct.logfc)));
+        return maxB - maxA;
+      })
       .slice(0, 10);
 
     return {
@@ -328,20 +334,24 @@ export default function VolcanoPlaceholder({
                 <thead>
                   <tr>
                     <th>Gene</th>
-                    <th>logFC</th>
-                    <th>Cell type</th>
+                    <th>Cell type (logFC)</th>
                     <th>Functional groups</th>
                   </tr>
                 </thead>
                 <tbody>
                   {topUp.length === 0 ? (
-                    <tr><td colSpan={4} className="muted">No data</td></tr>
+                    <tr><td colSpan={3} className="muted">No data</td></tr>
                   ) : (
                     topUp.map((row, idx) => (
                       <tr key={`up-${row.gene}-${idx}`}>
                         <td><strong>{row.gene}</strong></td>
-                        <td style={{ color: "#ef4444" }}>+{row.logfc.toFixed(2)}</td>
-                        <td>{row.cellTypes.join(", ")}</td>
+                        <td style={{ color: "#ef4444" }}>
+                          {row.cellTypeLogFC.map((ct, ctIdx) => (
+                            <div key={ctIdx}>
+                              {ct.cellType}: +{ct.logfc.toFixed(2)}
+                            </div>
+                          ))}
+                        </td>
                         <td className="muted small">{row.groups?.length ? row.groups.join(", ") : "—"}</td>
                       </tr>
                     ))
@@ -355,20 +365,24 @@ export default function VolcanoPlaceholder({
                 <thead>
                   <tr>
                     <th>Gene</th>
-                    <th>logFC</th>
-                    <th>Cell type</th>
+                    <th>Cell type (logFC)</th>
                     <th>Functional groups</th>
                   </tr>
                 </thead>
                 <tbody>
                   {topDown.length === 0 ? (
-                    <tr><td colSpan={4} className="muted">No data</td></tr>
+                    <tr><td colSpan={3} className="muted">No data</td></tr>
                   ) : (
                     topDown.map((row, idx) => (
                       <tr key={`down-${row.gene}-${idx}`}>
                         <td><strong>{row.gene}</strong></td>
-                        <td style={{ color: "#3b82f6" }}>{row.logfc.toFixed(2)}</td>
-                        <td>{row.cellTypes.join(", ")}</td>
+                        <td style={{ color: "#3b82f6" }}>
+                          {row.cellTypeLogFC.map((ct, ctIdx) => (
+                            <div key={ctIdx}>
+                              {ct.cellType}: {ct.logfc.toFixed(2)}
+                            </div>
+                          ))}
+                        </td>
                         <td className="muted small">{row.groups?.length ? row.groups.join(", ") : "—"}</td>
                       </tr>
                     ))
